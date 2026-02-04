@@ -85,6 +85,10 @@
         </thead>
         <tbody id="productEditTableBody"></tbody>
       </table>
+      <div style="margin-top:0.75rem;">
+        <button type="button" class="btn secondary" id="btnCopyOriginalHtml">Kopírovat celé původní HTML</button>
+        <button type="button" class="btn secondary" id="btnCopyNewHtml">Kopírovat celé nové HTML</button>
+      </div>
       <button type="button" class="btn" id="btnSyncEditedProduct" style="margin-top:0.5rem;">Synchronizovat do Kaufland</button>
       <div id="msgEditSync" class="msg hidden" style="margin-top:0.5rem;"></div>
     </div>
@@ -349,6 +353,27 @@
         await syncOne(0, 'msgEditSync');
       });
 
+      function copyToClipboard(text, msgElId) {
+        const msgId = msgElId || 'msgEditSync';
+        if (!text) { showMsg(msgId, 'Nic ke zkopírování.', 'error'); return; }
+        navigator.clipboard.writeText(text).then(() => {
+          showMsg(msgId, 'Zkopírováno do schránky.', 'success');
+        }).catch(() => {
+          showMsg(msgId, 'Kopírování se nepovedlo.', 'error');
+        });
+      }
+
+      document.getElementById('btnCopyOriginalHtml').addEventListener('click', function () {
+        if (products.length === 0) return;
+        document.getElementById('msgEditSync').classList.remove('hidden');
+        copyToClipboard(products[0].originalHtml, 'msgEditSync');
+      });
+      document.getElementById('btnCopyNewHtml').addEventListener('click', function () {
+        if (products.length === 0) return;
+        document.getElementById('msgEditSync').classList.remove('hidden');
+        copyToClipboard(products[0].cleanedHtml, 'msgEditSync');
+      });
+
       // Při načtení stránky obnovit krok 2 a 3 pokud už byl test
       if (sessionStorage.getItem(BL_STORAGE)) {
         document.getElementById('inventoryId').value = sessionStorage.getItem(INV_STORAGE) || '';
@@ -436,7 +461,9 @@
           }
         });
 
-        return root.innerHTML.trim() || '';
+        let result = root.innerHTML.trim() || '';
+        result = result.replace(/\&nbsp;/g, ' ').replace(/\u00A0/g, ' ');
+        return result;
       }
 
       function processXml(xmlString) {
