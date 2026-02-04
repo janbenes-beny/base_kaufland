@@ -101,7 +101,7 @@
     <input type="text" id="allowedTags" value="p,br,b,strong,i,em,u,h3,h4,h5,ul,ol,li,span">
     <label for="orphanPhrases">Orphan Phrases – „sirotci“ (oddělené čárkou)</label>
     <input type="text" id="orphanPhrases" value="tabulka velikostí,orientační tabulka,velikostní tabulka,slouží pouze pro orientaci">
-    <p class="sub" style="margin-top:-0.5rem;">Odstraní se bloky s těmito frázemi vedle obrázku/tabulky i <strong>blok hned pod</strong> obrázkem/tabulkou (popisek).</p>
+    <p class="sub" style="margin-top:-0.5rem;">Odstraní se bloky s těmito frázemi vedle obrázku/tabulky i <strong>blok hned pod</strong> obrázkem/tabulkou (popisek). Porovnání je <strong>bez ohledu na velikost písmen</strong> („Tabulka velikostí“ = „tabulka velikostí“).</p>
     <div class="toggle-wrap">
       <input type="checkbox" id="tableToList" checked>
       <label for="tableToList" style="margin:0">Převést tabulky na seznamy (table/tr/td → ul/li)</label>
@@ -405,8 +405,8 @@
           return (el && (el.textContent || '').trim()) || '';
         }
         function containsOrphan(text) {
-          const t = (text || '').toLowerCase();
-          return orphanPhrases.some(p => t.includes(p));
+          const t = ((text || '').trim()).toLowerCase();
+          return orphanPhrases.some(p => t.includes((p || '').toLowerCase()));
         }
 
         const toRemove = new Set();
