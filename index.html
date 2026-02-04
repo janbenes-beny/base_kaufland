@@ -60,6 +60,16 @@
     <p class="sub" style="margin-top:-0.5rem;">Synchronizace vždy cílí na kanál <strong>Kaufland (účet 14257)</strong>, inventory 5257. Seznam klíčů získáte po „Testovat spojení“.</p>
     <button type="button" class="btn" id="btnTestConnection">Testovat spojení</button>
     <div id="msg1" class="msg hidden"></div>
+
+    <h3 style="margin-top:1.25rem;">Načíst produkt podle ID (test spojení)</h3>
+    <p class="sub">Zadejte Product ID z katalogu – zobrazí se data produktu z BaseLinker API (metoda getInventoryProductsData).</p>
+    <label for="testProductId">Product ID</label>
+    <input type="text" id="testProductId" placeholder="např. 2685">
+    <button type="button" class="btn" id="btnGetProductInfo">Načíst informace o produktu</button>
+    <div id="productInfoWrap" class="hidden" style="margin-top:0.75rem;">
+      <strong>Odpověď API:</strong>
+      <pre id="productInfoOutput" class="preview-html" style="max-height:320px; margin-top:0.25rem; font-size:0.8rem;"></pre>
+    </div>
   </div>
 
   <!-- Krok 2: Cleaning Rules -->
@@ -198,6 +208,47 @@
             showMsg('msg1', (data.error_message || data.error || 'Chyba API') + (data.error_code ? ' (kód: ' + data.error_code + ')' : ''), 'error');
           }
         } catch (e) {
+          showMsg('msg1', 'Chyba: ' + (e.message || 'síť'), 'error');
+        } finally {
+          this.disabled = false;
+        }
+      });
+
+      // —— Načíst produkt podle ID (getInventoryProductsData) ——
+      document.getElementById('btnGetProductInfo').addEventListener('click', async function () {
+        const token = getToken();
+        const inventoryId = getInventoryId() || String(KAUFLAND_INVENTORY_ID);
+        const productIdStr = document.getElementById('testProductId').value.trim();
+        if (!token) {
+          showMsg('msg1', 'Vyplňte BaseLinker token.', 'error');
+          return;
+        }
+        if (!productIdStr) {
+          showMsg('msg1', 'Zadejte Product ID.', 'error');
+          return;
+        }
+        const productId = parseInt(productIdStr, 10);
+        if (isNaN(productId)) {
+          showMsg('msg1', 'Product ID musí být číslo.', 'error');
+          return;
+        }
+        this.disabled = true;
+        document.getElementById('productInfoWrap').classList.add('hidden');
+        document.getElementById('productInfoOutput').textContent = 'Načítám…';
+        document.getElementById('productInfoWrap').classList.remove('hidden');
+        try {
+          const data = await callBaseLinker('getInventoryProductsData', {
+            inventory_id: parseInt(inventoryId, 10),
+            products: [productId],
+          });
+          const out = document.getElementById('productInfoOutput');
+          out.textContent = JSON.stringify(data, null, 2);
+          document.getElementById('productInfoWrap').classList.remove('hidden');
+          if (data.status !== 'SUCCESS') {
+            showMsg('msg1', (data.error_message || data.error || 'Chyba API') + (data.error_code ? ' (kód: ' + data.error_code + ')' : ''), 'error');
+          }
+        } catch (e) {
+          document.getElementById('productInfoOutput').textContent = 'Chyba: ' + (e.message || 'síť');
           showMsg('msg1', 'Chyba: ' + (e.message || 'síť'), 'error');
         } finally {
           this.disabled = false;
