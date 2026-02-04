@@ -3,6 +3,8 @@
 Webová aplikace pro vyčištění popisů z Heureka XML a synchronizaci do BaseLinker API.  
 Dokumentace BaseLinker: [https://api.baselinker.com/](https://api.baselinker.com/).
 
+Obsahuje také **přihlášení** a **import z API** (feed URL) pro variantu Heureka → Kaufland.
+
 ---
 
 ## Kroky v aplikaci
@@ -32,9 +34,31 @@ Dokumentace BaseLinker: [https://api.baselinker.com/](https://api.baselinker.com
 
 1. [Netlify](https://app.netlify.com/) → **Add new site** → **Import an existing project** (Git).
 2. **Build settings:** Build command prázdný, **Publish directory:** `.`
-3. **Deploy** – žádné povinné env proměnné; token a ID zadává uživatel v aplikaci.
+3. **Functions directory:** `netlify/functions` (často detekováno z `netlify.toml`).
 
-Funkce **`netlify/functions/baselinker.js`** slouží jako proxy k BaseLinker API (CORS, bez vystavení tokenu z prohlížeče přímo třetí straně z vaší domény).
+**Environment variables** (Site settings → Environment variables):
+
+| Proměnná           | Povinné | Popis |
+|--------------------|--------|--------|
+| `LOGIN_USER`      | ano*   | Uživatelské jméno pro přihlášení |
+| `LOGIN_PASSWORD`  | ano*   | Heslo pro přihlášení |
+| `AUTH_SECRET`     | doporučeno | Tajný klíč pro podpis tokenů (jinak se použije `LOGIN_PASSWORD`) |
+| `HEUREKA_FEED_URL` nebo `FEED_URL` | ne | URL XML feedu (Heureka / Base API) |
+| `HEUREKA_API_KEY` nebo `FEED_API_KEY` | ne | API klíč pro přístup k feedu |
+
+\* Pro BaseLinker wizard bez přihlášení lze nechat prázdné; token a ID zadává uživatel v aplikaci. Pro přihlášení a Import z API jsou `LOGIN_USER` a `LOGIN_PASSWORD` povinné.
+
+Funkce **`netlify/functions/baselinker.js`** slouží jako proxy k BaseLinker API (CORS). Funkce **auth.js** a **import-feed.js** obsluhují přihlášení a stahování feedu z API.
+
+---
+
+## Přihlášení a Import z API
+
+- **Přihlášení:** Na úvodní stránce zadejte uživatel a heslo nastavené v `LOGIN_USER` a `LOGIN_PASSWORD`. Po úspěchu se zobrazí hlavní aplikace.
+- **Import z API:** V záložce „Import z API“ můžete stáhnout feed z nakonfigurované URL (`HEUREKA_FEED_URL`, `FEED_API_KEY`) nebo zadat **vlastní feed URL** a volitelně **API klíč** (backend obchází CORS a drží klíč na serveru).
+- **Odhlášení:** Tlačítko „Odhlásit se“ vpravo nahoře.
+
+**Poznámka:** Přihlášení a Import z API fungují až po nasazení na Netlify (nebo při lokálním běhu `netlify dev`).
 
 ---
 
@@ -45,7 +69,15 @@ npm install -g netlify-cli
 netlify dev
 ```
 
-Otevře se lokální server; volání na `/.netlify/functions/baselinker` poběží lokálně.
+Otevře se lokální server; volání na `/.netlify/functions/baselinker`, `/.netlify/functions/auth` a `/.netlify/functions/import-feed` poběží lokálně. Env proměnné nastavte v souboru `.env` (necommitujte), viz `.env.example`:
+
+```env
+LOGIN_USER=admin
+LOGIN_PASSWORD=vaso-heslo
+AUTH_SECRET=nahodny-tajny-klic
+HEUREKA_FEED_URL=https://vase-feed-url.cz/feed.xml
+HEUREKA_API_KEY=volitelne
+```
 
 ---
 
@@ -55,5 +87,18 @@ Otevře se lokální server; volání na `/.netlify/functions/baselinker` pobě�
 |--------|------|
 | `index.html` | Wizard: API Setup, Cleaning Rules, Processing, tabulka produktů, Sync |
 | `netlify/functions/baselinker.js` | Proxy POST na BaseLinker `connector.php` (token, method, parameters) |
+| `netlify/functions/auth.js` | Přihlášení, vydání JWT tokenu |
+| `netlify/functions/import-feed.js` | Stahování Heureka feedu (s Bearer tokenem) |
 
-Původní Python/Streamlit verze a funkce auth/import-feed zůstávají v repozitáři pro případné další použití.
+Python/Streamlit verze (`app.py`) zůstává v repozitáři pro lokální vyčištění XML bez přihlášení a API.
+
+---
+
+## Python verze (Streamlit)
+
+Bez přihlášení a API, pouze lokální nahrání souboru:
+
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
