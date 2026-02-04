@@ -100,7 +100,8 @@
     <label for="allowedTags">Allowed Tags (oddělené čárkou)</label>
     <input type="text" id="allowedTags" value="p,br,b,strong,i,em,u,h3,h4,h5,ul,ol,li,span">
     <label for="orphanPhrases">Orphan Phrases – „sirotci“ (oddělené čárkou)</label>
-    <input type="text" id="orphanPhrases" value="tabulka velikostí,orientační tabulka,velikostní tabulka">
+    <input type="text" id="orphanPhrases" value="tabulka velikostí,orientační tabulka,velikostní tabulka,slouží pouze pro orientaci">
+    <p class="sub" style="margin-top:-0.5rem;">Odstraní se bloky s těmito frázemi vedle obrázku/tabulky i <strong>blok hned pod</strong> obrázkem/tabulkou (popisek).</p>
     <div class="toggle-wrap">
       <input type="checkbox" id="tableToList" checked>
       <label for="tableToList" style="margin:0">Převést tabulky na seznamy (table/tr/td → ul/li)</label>
@@ -409,6 +410,12 @@
         }
 
         const toRemove = new Set();
+        // Pomocná: přidá blok za obrázkem/tabulkou (následující sourozenec rodiče), pokud obsahuje sirotčí frázi
+        function markCaptionAfter(parent) {
+          if (!parent || parent === root) return;
+          const parentNext = parent.nextElementSibling;
+          if (parentNext && containsOrphan(getText(parentNext))) toRemove.add(parentNext);
+        }
         root.querySelectorAll('img').forEach(el => {
           toRemove.add(el);
           const parent = el.parentElement;
@@ -417,6 +424,7 @@
           if (parent && parent !== root && containsOrphan(getText(parent))) toRemove.add(parent);
           if (prev && containsOrphan(getText(prev))) toRemove.add(prev);
           if (next && containsOrphan(getText(next))) toRemove.add(next);
+          markCaptionAfter(parent); // popisek pod obrázkem (v dalším bloku)
         });
         root.querySelectorAll('table').forEach(el => {
           if (!tableToList) toRemove.add(el);
@@ -426,6 +434,7 @@
           if (parent && parent !== root && containsOrphan(getText(parent))) toRemove.add(parent);
           if (prev && containsOrphan(getText(prev))) toRemove.add(prev);
           if (next && containsOrphan(getText(next))) toRemove.add(next);
+          markCaptionAfter(parent); // popisek pod tabulkou (v dalším bloku)
         });
 
         const byDepth = Array.from(toRemove);
