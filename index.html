@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Čištění popisů Heureka → BaseLinker</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 900px; margin: 0 auto; padding: 1.5rem; background: #f5f5f5; color: #1a1a1a; }
+    h1 { font-size: 1.35rem; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.1rem; margin: 1.25rem 0 0.5rem; }
+    .sub { color: #555; font-size: 0.9rem; margin-bottom: 1rem; }
+    .card { background: #fff; padding: 1.25rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    label { display: block; margin-bottom: 0.25rem; font-weight: 500; font-size: 0.9rem; }
+    input[type="text"], input[type="password"], input[type="url"], textarea {
+      width: 100%; padding: 0.5rem; margin-bottom: 0.75rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem;
+    }
+    textarea { min-height: 60px; resize: vertical; }
+    .btn {
+      display: inline-block; padding: 0.5rem 1rem; background: #0066cc; color: #fff; border: none; border-radius: 6px;
+      font-size: 0.95rem; cursor: pointer; margin-right: 0.5rem; margin-top: 0.25rem;
+    }
+    .btn:hover { background: #0052a3; }
+    .btn:disabled { background: #999; cursor: not-allowed; }
+    .btn.secondary { background: #555; }
+    .msg { margin-top: 0.75rem; padding: 0.6rem; border-radius: 6px; font-size: 0.9rem; }
+    .msg.success { background: #d4edda; color: #155724; }
+    .msg.error { background: #f8d7da; color: #721c24; }
+    .msg.info { background: #e7f3ff; color: #004085; }
+    .hidden { display: none !important; }
+    .step { margin-bottom: 1.5rem; }
+    .toggle-wrap { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .toggle-wrap input[type="checkbox"] { width: auto; margin: 0; }
+    .upload-zone { border: 2px dashed #999; border-radius: 8px; padding: 1.5rem; text-align: center; background: #fafafa; cursor: pointer; margin-bottom: 0.75rem; }
+    .upload-zone:hover { border-color: #0066cc; background: #f0f7ff; }
+    .upload-zone input[type="file"] { display: none; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+    th { background: #eee; }
+    .preview-html { max-height: 120px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; }
+    .step-badge { background: #0066cc; color: #fff; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; margin-right: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Čištění produktových popisů (Heureka XML → BaseLinker)</h1>
+  <p class="sub">Nastavte API, pravidla čištění, nahrajte feed a synchronizujte do BaseLinker.</p>
+
+  <!-- Krok 1: API Setup -->
+  <div class="step card" id="step1">
+    <h2><span class="step-badge">1</span>API Setup</h2>
+    <label for="blToken">BaseLinker API token (X-BLToken)</label>
+    <input type="password" id="blToken" placeholder="Váš token z BaseLinker → Účet → API" autocomplete="off">
+    <label for="inventoryId">INVENTORY_ID (ID katalogu)</label>
+    <input type="text" id="inventoryId" placeholder="např. 307">
+    <label for="fieldId">FIELD_ID (klíč pole popisu pro kanál)</label>
+    <input type="text" id="fieldId" placeholder="např. description nebo description|cs|kaufland_0">
+    <p class="sub" style="margin-top:-0.5rem;">Seznam dostupných klíčů získáte po kliknutí na „Testovat spojení“.</p>
+    <button type="button" class="btn" id="btnTestConnection">Testovat spojení</button>
+    <div id="msg1" class="msg hidden"></div>
+  </div>
+
+  <!-- Krok 2: Cleaning Rules -->
+  <div class="step card hidden" id="step2">
+    <h2><span class="step-badge">2</span>Pravidla čištění</h2>
+    <label for="allowedTags">Allowed Tags (oddělené čárkou)</label>
+    <input type="text" id="allowedTags" value="p,br,b,strong,i,em,u,h3,h4,h5,ul,ol,li,span">
+    <label for="orphanPhrases">Orphan Phrases – „sirotci“ (oddělené čárkou)</label>
+    <input type="text" id="orphanPhrases" value="tabulka velikostí,orientační tabulka,velikostní tabulka">
+    <div class="toggle-wrap">
+      <input type="checkbox" id="tableToList" checked>
+      <label for="tableToList" style="margin:0">Převést tabulky na seznamy (table/tr/td → ul/li)</label>
+    </div>
+  </div>
+
+  <!-- Krok 3: Processing -->
+  <div class="step card hidden" id="step3">
+    <h2><span class="step-badge">3</span>Zpracování</h2>
+    <label>XML feed</label>
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" id="fileInput" accept=".xml,application/xml,text/xml">
+      <p id="uploadPrompt">Přetáhněte XML soubor sem nebo klikněte pro výběr</p>
+    </div>
+    <label for="feedUrl">Nebo URL feedu</label>
+    <input type="url" id="feedUrl" placeholder="https://...">
+    <button type="button" class="btn" id="btnLoadUrl">Načíst z URL</button>
+    <div id="msg3" class="msg hidden"></div>
+    <div id="productsTableWrap" class="hidden">
+      <h3>Tabulka produktů</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Název</th>
+            <th>Původní HTML (náhled)</th>
+            <th>Nové HTML (náhled)</th>
+            <th>Sync</th>
+          </tr>
+        </thead>
+        <tbody id="productsTableBody"></tbody>
+      </table>
+      <button type="button" class="btn" id="btnSyncAll">Sync vše do BaseLinker</button>
+      <div id="msgSync" class="msg hidden"></div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const API_BASE = '';
+      function apiUrl(path) {
+        return (API_BASE || '') + '/.netlify/functions' + (path.startsWith('/') ? path : '/' + path);
+      }
+
+      let products = [];
+      const BL_STORAGE = 'bl_token';
+      const INV_STORAGE = 'bl_inventory_id';
+      const FIELD_STORAGE = 'bl_field_id';
+
+      function getToken() { return sessionStorage.getItem(BL_STORAGE) || document.getElementById('blToken').value.trim(); }
+      function getInventoryId() { return sessionStorage.getItem(INV_STORAGE) || document.getElementById('inventoryId').value.trim(); }
+      function getFieldId() { return sessionStorage.getItem(FIELD_STORAGE) || document.getElementById('fieldId').value.trim(); }
+
+      function showMsg(elId, text, type) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        el.textContent = text || '';
+        el.className = 'msg ' + (type || '');
+        el.classList.toggle('hidden', !text);
+      }
+
+      function callBaseLinker(method, parameters) {
+        const token = getToken();
+        return fetch(apiUrl('/baselinker'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, method, parameters }),
+        }).then(r => r.json());
+      }
+
+      // —— Test spojení ——
+      document.getElementById('btnTestConnection').addEventListener('click', async function () {
+        const token = document.getElementById('blToken').value.trim();
+        const inventoryId = document.getElementById('inventoryId').value.trim();
+        if (!token || !inventoryId) {
+          showMsg('msg1', 'Vyplňte token a INVENTORY_ID.', 'error');
+          return;
+        }
+        this.disabled = true;
+        showMsg('msg1', 'Kontroluji spojení…', 'info');
+        try {
+          const data = await callBaseLinker('getInventoryAvailableTextFieldKeys', { inventory_id: parseInt(inventoryId, 10) });
+          if (data.status === 'SUCCESS') {
+            sessionStorage.setItem(BL_STORAGE, token);
+            sessionStorage.setItem(INV_STORAGE, inventoryId);
+            sessionStorage.setItem(FIELD_STORAGE, document.getElementById('fieldId').value.trim());
+            showMsg('msg1', 'Spojení v pořádku. Dostupná textová pole: ' + Object.keys(data.text_field_keys || {}).join(', ') + '. Pokračujte na krok 2.', 'success');
+            document.getElementById('step2').classList.remove('hidden');
+            document.getElementById('step3').classList.remove('hidden');
+          } else {
+            showMsg('msg1', (data.error_message || data.error || 'Chyba API') + (data.error_code ? ' (kód: ' + data.error_code + ')' : ''), 'error');
+          }
+        } catch (e) {
+          showMsg('msg1', 'Chyba: ' + (e.message || 'síť'), 'error');
+        } finally {
+          this.disabled = false;
+        }
+      });
+
+      // Při načtení stránky obnovit krok 2 a 3 pokud už byl test
+      if (sessionStorage.getItem(BL_STORAGE)) {
+        document.getElementById('inventoryId').value = sessionStorage.getItem(INV_STORAGE) || '';
+        document.getElementById('fieldId').value = sessionStorage.getItem(FIELD_STORAGE) || '';
+        document.getElementById('step2').classList.remove('hidden');
+        document.getElementById('step3').classList.remove('hidden');
+      }
+
+      // —— Cleaning logic ——
+      function parseAllowedTags(str) {
+        return new Set(str.split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
+      }
+      function parseOrphanPhrases(str) {
+        return str.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      }
+
+      function cleanDescription(html, allowedTagsSet, orphanPhrases, tableToList) {
+        if (!html || typeof html !== 'string') return '';
+        const trimmed = html.trim();
+        if (!trimmed) return '';
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString('<div id="_r">' + trimmed + '</div>', 'text/html');
+        const root = doc.getElementById('_r');
+        if (!root) return trimmed;
+
+        function getText(el) {
+          return (el && (el.textContent || '').trim()) || '';
+        }
+        function containsOrphan(text) {
+          const t = (text || '').toLowerCase();
+          return orphanPhrases.some(p => t.includes(p));
+        }
+
+        const toRemove = new Set();
+        root.querySelectorAll('img').forEach(el => {
+          toRemove.add(el);
+          const parent = el.parentElement;
+          const prev = el.previousElementSibling;
+          const next = el.nextElementSibling;
+          if (parent && parent !== root && containsOrphan(getText(parent))) toRemove.add(parent);
+          if (prev && containsOrphan(getText(prev))) toRemove.add(prev);
+          if (next && containsOrphan(getText(next))) toRemove.add(next);
+        });
+        root.querySelectorAll('table').forEach(el => {
+          if (!tableToList) toRemove.add(el);
+          const parent = el.parentElement;
+          const prev = el.previousElementSibling;
+          const next = el.nextElementSibling;
+          if (parent && parent !== root && containsOrphan(getText(parent))) toRemove.add(parent);
+          if (prev && containsOrphan(getText(prev))) toRemove.add(prev);
+          if (next && containsOrphan(getText(next))) toRemove.add(next);
+        });
+
+        const byDepth = Array.from(toRemove);
+        byDepth.sort((a, b) => {
+          let d = 0, x = a; while (x && x.parentElement) { x = x.parentElement; d++; }
+          let e = 0, y = b; while (y && y.parentElement) { y = y.parentElement; e++; }
+          return d - e;
+        });
+        byDepth.forEach(el => { if (el.parentNode) el.remove(); });
+
+        if (tableToList) {
+          root.querySelectorAll('table').forEach(table => {
+            const ul = doc.createElement('ul');
+            table.querySelectorAll('tr').forEach(tr => {
+              const li = doc.createElement('li');
+              const parts = [];
+              tr.querySelectorAll('td, th').forEach(cell => parts.push(cell.textContent.trim()));
+              li.textContent = parts.join(' – ');
+              ul.appendChild(li);
+            });
+            table.parentNode.replaceChild(ul, table);
+          });
+        }
+
+        root.querySelectorAll('*').forEach(el => {
+          const tag = el.tagName.toLowerCase();
+          if (!allowedTagsSet.has(tag)) {
+            const frag = doc.createDocumentFragment();
+            while (el.firstChild) frag.appendChild(el.firstChild);
+            el.parentNode.replaceChild(frag, el);
+          } else {
+            while (el.attributes.length) el.removeAttribute(el.attributes[0].name);
+          }
+        });
+
+        return root.innerHTML.trim() || '';
+      }
+
+      function processXml(xmlString) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlString, 'text/xml');
+        const err = doc.querySelector('parsererror');
+        if (err) throw new Error('Nevalidní XML: ' + (err.textContent || ''));
+
+        const allowedTagsSet = parseAllowedTags(document.getElementById('allowedTags').value);
+        const orphanPhrases = parseOrphanPhrases(document.getElementById('orphanPhrases').value);
+        const tableToList = document.getElementById('tableToList').checked;
+
+        const items = doc.querySelectorAll('SHOPITEM');
+        if (!items.length) throw new Error('V XML není žádný SHOPITEM.');
+
+        const result = [];
+        items.forEach(item => {
+          const itemId = (item.querySelector('ITEM_ID') && item.querySelector('ITEM_ID').textContent) || '';
+          const name = (item.querySelector('PRODUCTNAME') && item.querySelector('PRODUCTNAME').textContent) || '';
+          let raw = '';
+          const desc = item.querySelector('DESCRIPTION') || item.querySelector('LONG_DESCRIPTION');
+          if (desc) {
+            if (desc.childNodes.length) {
+              desc.childNodes.forEach(n => {
+                if (n.nodeType === Node.TEXT_NODE) raw += n.textContent;
+                if (n.nodeType === Node.CDATA_SECTION_NODE) raw += n.textContent;
+                if (n.nodeType === Node.ELEMENT_NODE) raw += new XMLSerializer().serializeToString(n);
+              });
+            } else raw = (desc.textContent || '').trim();
+          }
+          const cleaned = cleanDescription(raw, allowedTagsSet, orphanPhrases, tableToList);
+          result.push({ itemId, name, originalHtml: raw, cleanedHtml: cleaned });
+        });
+        return result;
+      }
+
+      function renderTable(productsList) {
+        products = productsList;
+        const tbody = document.getElementById('productsTableBody');
+        tbody.innerHTML = '';
+        productsList.forEach((p, i) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td>' + escapeHtml(p.itemId) + '</td>' +
+            '<td>' + escapeHtml(p.name) + '</td>' +
+            '<td><div class="preview-html">' + escapeHtml(p.originalHtml.slice(0, 300)) + (p.originalHtml.length > 300 ? '…' : '') + '</div></td>' +
+            '<td><div class="preview-html">' + escapeHtml(p.cleanedHtml.slice(0, 300)) + (p.cleanedHtml.length > 300 ? '…' : '') + '</div></td>' +
+            '<td><button type="button" class="btn sync-one" data-index="' + i + '">Sync</button></td>';
+          tbody.appendChild(tr);
+        });
+        document.getElementById('productsTableWrap').classList.remove('hidden');
+        tbody.querySelectorAll('.sync-one').forEach(btn => {
+          btn.addEventListener('click', function () { syncOne(parseInt(this.getAttribute('data-index'), 10)); });
+        });
+      }
+
+      function escapeHtml(s) {
+        const div = document.createElement('div');
+        div.textContent = s;
+        return div.innerHTML;
+      }
+
+      function loadXmlContent(xmlString) {
+        showMsg('msg3', 'Zpracovávám…', 'info');
+        try {
+          const list = processXml(xmlString);
+          showMsg('msg3', 'Načteno ' + list.length + ' produktů.', 'success');
+          renderTable(list);
+        } catch (e) {
+          showMsg('msg3', e.message || 'Chyba zpracování.', 'error');
+        }
+      }
+
+      document.getElementById('uploadZone').addEventListener('click', () => document.getElementById('fileInput').click());
+      document.getElementById('uploadZone').addEventListener('dragover', e => { e.preventDefault(); document.getElementById('uploadZone').style.borderColor = '#0066cc'; });
+      document.getElementById('uploadZone').addEventListener('dragleave', () => { document.getElementById('uploadZone').style.borderColor = ''; });
+      document.getElementById('uploadZone').addEventListener('drop', e => {
+        e.preventDefault();
+        document.getElementById('uploadZone').style.borderColor = '';
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f && f.name.toLowerCase().endsWith('.xml')) {
+          const r = new FileReader();
+          r.onload = () => loadXmlContent(r.result);
+          r.readAsText(f, 'UTF-8');
+          document.getElementById('uploadPrompt').textContent = 'Načteno: ' + f.name;
+        }
+      });
+      document.getElementById('fileInput').addEventListener('change', function () {
+        const f = this.files && this.files[0];
+        if (f) {
+          const r = new FileReader();
+          r.onload = () => loadXmlContent(r.result);
+          r.readAsText(f, 'UTF-8');
+          document.getElementById('uploadPrompt').textContent = 'Načteno: ' + f.name;
+        }
+      });
+
+      document.getElementById('btnLoadUrl').addEventListener('click', async function () {
+        const url = document.getElementById('feedUrl').value.trim();
+        if (!url) { showMsg('msg3', 'Zadejte URL feedu.', 'error'); return; }
+        this.disabled = true;
+        showMsg('msg3', 'Stahuji…', 'info');
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+          const text = await res.text();
+          loadXmlContent(text);
+        } catch (e) {
+          showMsg('msg3', 'Chyba: ' + (e.message || 'síť'), 'error');
+        } finally {
+          this.disabled = false;
+        }
+      });
+
+      async function syncOne(index) {
+        const p = products[index];
+        const inventoryId = getInventoryId();
+        const fieldId = getFieldId();
+        if (!inventoryId || !fieldId) {
+          showMsg('msgSync', 'Vyplňte INVENTORY_ID a FIELD_ID v kroku 1.', 'error');
+          return;
+        }
+        const textFields = {};
+        textFields[fieldId] = p.cleanedHtml;
+        try {
+          const data = await callBaseLinker('addInventoryProduct', {
+            inventory_id: inventoryId,
+            product_id: p.itemId,
+            text_fields: textFields,
+          });
+          if (data.status === 'SUCCESS') {
+            showMsg('msgSync', 'Produkt ' + p.itemId + ' synchronizován.', 'success');
+          } else {
+            showMsg('msgSync', (data.error_message || data.error || 'Chyba') + ' (produkt ' + p.itemId + ')', 'error');
+          }
+        } catch (e) {
+          showMsg('msgSync', 'Chyba: ' + (e.message || ''), 'error');
+        }
+      }
+
+      document.getElementById('btnSyncAll').addEventListener('click', async function () {
+        const inventoryId = getInventoryId();
+        const fieldId = getFieldId();
+        if (!inventoryId || !fieldId) {
+          showMsg('msgSync', 'Vyplňte INVENTORY_ID a FIELD_ID v kroku 1.', 'error');
+          return;
+        }
+        this.disabled = true;
+        showMsg('msgSync', 'Synchronizuji ' + products.length + ' produktů…', 'info');
+        let ok = 0, err = 0;
+        for (let i = 0; i < products.length; i++) {
+          const p = products[i];
+          const textFields = {};
+          textFields[fieldId] = p.cleanedHtml;
+          try {
+            const data = await callBaseLinker('addInventoryProduct', {
+              inventory_id: inventoryId,
+              product_id: p.itemId,
+              text_fields: textFields,
+            });
+            if (data.status === 'SUCCESS') ok++; else err++;
+          } catch (_) { err++; }
+        }
+        showMsg('msgSync', 'Hotovo: ' + ok + ' OK, ' + err + ' chyb.', err ? 'error' : 'success');
+        this.disabled = false;
+      });
+    })();
+  </script>
+</body>
+</html>
