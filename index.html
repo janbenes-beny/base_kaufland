@@ -87,6 +87,24 @@
     <input type="url" id="feedUrl" placeholder="https://...">
     <button type="button" class="btn" id="btnLoadUrl">Načíst z URL</button>
     <div id="msg3" class="msg hidden"></div>
+    <div id="pickOneWrap" class="hidden">
+      <h3>Vyberte jeden produkt</h3>
+      <p class="sub">Načteno <span id="productCount">0</span> produktů. Nejdřív vyberte produkt, pak uvidíte náhled a můžete synchronizovat.</p>
+      <label for="productSelect">Produkt</label>
+      <select id="productSelect">
+        <option value="">-- vyberte produkt --</option>
+      </select>
+      <button type="button" class="btn" id="btnShowOne">Zobrazit tento produkt a synchronizovat</button>
+      <div id="oneProductPreview" class="hidden card" style="margin-top:1rem;">
+        <h4 id="oneProductTitle"></h4>
+        <p><strong>Původní HTML (náhled):</strong></p>
+        <div class="preview-html" id="oneOriginal" style="max-height:180px;"></div>
+        <p style="margin-top:0.75rem;"><strong>Vyčištěné HTML (náhled):</strong></p>
+        <div class="preview-html" id="oneCleaned" style="max-height:180px;"></div>
+        <button type="button" class="btn" id="btnSyncThisOne" style="margin-top:0.75rem;">Synchronizovat do Kaufland</button>
+      </div>
+      <p style="margin-top:1rem;"><button type="button" class="btn secondary" id="btnShowAllProducts">Zobrazit všechny produkty (tabulka)</button></p>
+    </div>
     <div id="productsTableWrap" class="hidden">
       <h3>Tabulka produktů</h3>
       <table>
@@ -358,12 +376,56 @@
         showMsg('msg3', 'Zpracovávám…', 'info');
         try {
           const list = processXml(xmlString);
-          showMsg('msg3', 'Načteno ' + list.length + ' produktů.', 'success');
-          renderTable(list);
+          products = list;
+          showMsg('msg3', 'Načteno ' + list.length + ' produktů. Vyberte jeden produkt níže.', 'success');
+          showPickOne(list);
+          document.getElementById('productsTableWrap').classList.add('hidden');
         } catch (e) {
           showMsg('msg3', e.message || 'Chyba zpracování.', 'error');
         }
       }
+
+      function showPickOne(productsList) {
+        const wrap = document.getElementById('pickOneWrap');
+        const sel = document.getElementById('productSelect');
+        const countEl = document.getElementById('productCount');
+        countEl.textContent = productsList.length;
+        sel.innerHTML = '<option value="">-- vyberte produkt --</option>';
+        productsList.forEach((p, i) => {
+          const opt = document.createElement('option');
+          opt.value = i;
+          opt.textContent = (p.itemId || '?') + ' – ' + (p.name ? p.name.slice(0, 50) + (p.name.length > 50 ? '…' : '') : 'bez názvu');
+          sel.appendChild(opt);
+        });
+        document.getElementById('oneProductPreview').classList.add('hidden');
+        wrap.classList.remove('hidden');
+      }
+
+      document.getElementById('btnShowOne').addEventListener('click', function () {
+        const sel = document.getElementById('productSelect');
+        const idx = sel.value === '' ? -1 : parseInt(sel.value, 10);
+        if (idx < 0) {
+          showMsg('msg3', 'Vyberte produkt ze seznamu.', 'error');
+          return;
+        }
+        const p = products[idx];
+        document.getElementById('oneProductTitle').textContent = p.itemId + ' – ' + p.name;
+        document.getElementById('oneOriginal').innerHTML = escapeHtml(p.originalHtml.slice(0, 500)) + (p.originalHtml.length > 500 ? '…' : '');
+        document.getElementById('oneCleaned').innerHTML = escapeHtml(p.cleanedHtml.slice(0, 500)) + (p.cleanedHtml.length > 500 ? '…' : '');
+        document.getElementById('oneProductPreview').classList.remove('hidden');
+        document.getElementById('btnSyncThisOne').setAttribute('data-index', idx);
+        document.getElementById('singleProductId').value = p.itemId;
+      });
+
+      document.getElementById('btnSyncThisOne').addEventListener('click', function () {
+        const idx = this.getAttribute('data-index');
+        if (idx != null) syncOne(parseInt(idx, 10));
+      });
+
+      document.getElementById('btnShowAllProducts').addEventListener('click', function () {
+        document.getElementById('pickOneWrap').classList.add('hidden');
+        renderTable(products);
+      });
 
       document.getElementById('uploadZone').addEventListener('click', () => document.getElementById('fileInput').click());
       document.getElementById('uploadZone').addEventListener('dragover', e => { e.preventDefault(); document.getElementById('uploadZone').style.borderColor = '#0066cc'; });
