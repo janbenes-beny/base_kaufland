@@ -410,10 +410,10 @@
         }
 
         const toRemove = new Set();
-        // Pomocná: přidá bloky za obrázkem/tabulkou – projde až 8 následujících sourozenců a odstraní ty s sirotčí frází (popisek může být o pár bloků dál)
-        function markCaptionAfter(parent) {
-          if (!parent || parent === root) return;
-          let el = parent.nextElementSibling;
+        // Pomocná: přidá bloky za obrázkem/tabulkou – projde až 8 následujících sourozenců a odstraní ty s sirotčí frází
+        function markCaptionAfter(block) {
+          if (!block || block === root) return;
+          let el = block.nextElementSibling;
           let count = 0;
           while (el && count < 8) {
             if (containsOrphan(getText(el))) {
@@ -424,6 +424,14 @@
             count++;
           }
         }
+        // Obrázek může být v <p><a><img></a></p> – rodič je <a>, ten nemá nextElementSibling; musíme jít na blok (<p>)
+        function getBlockAncestor(el) {
+          while (el && el !== root) {
+            if (el.nextElementSibling != null) return el;
+            el = el.parentElement;
+          }
+          return el && el !== root ? el : null;
+        }
         root.querySelectorAll('img').forEach(el => {
           toRemove.add(el);
           const parent = el.parentElement;
@@ -432,7 +440,9 @@
           if (parent && parent !== root && containsOrphan(getText(parent))) toRemove.add(parent);
           if (prev && containsOrphan(getText(prev))) toRemove.add(prev);
           if (next && containsOrphan(getText(next))) toRemove.add(next);
-          markCaptionAfter(parent); // popisek pod obrázkem (v dalším bloku)
+          const block = getBlockAncestor(parent);
+          markCaptionAfter(block);
+          if (parent && parent.tagName === 'A') toRemove.add(parent);
         });
         root.querySelectorAll('table').forEach(el => {
           if (!tableToList) toRemove.add(el);
@@ -442,7 +452,7 @@
           if (parent && parent !== root && containsOrphan(getText(parent))) toRemove.add(parent);
           if (prev && containsOrphan(getText(prev))) toRemove.add(prev);
           if (next && containsOrphan(getText(next))) toRemove.add(next);
-          markCaptionAfter(parent); // popisek pod tabulkou (v dalším bloku)
+          markCaptionAfter(getBlockAncestor(parent));
         });
 
         const byDepth = Array.from(toRemove);
@@ -478,6 +488,13 @@
           } else {
             while (el.attributes.length) el.removeAttribute(el.attributes[0].name);
           }
+        });
+
+        const emptyBlockTags = ['p', 'div'];
+        emptyBlockTags.forEach(tag => {
+          root.querySelectorAll(tag).forEach(el => {
+            if (!(el.textContent || '').trim() && el.parentNode) el.remove();
+          });
         });
 
         let result = root.innerHTML.trim() || '';
