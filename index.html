@@ -40,6 +40,8 @@
     th { background: #eee; }
     .preview-html { max-height: 120px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; }
     .step-badge { background: #0066cc; color: #fff; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; margin-right: 0.5rem; }
+    .select-all-wrap { font-weight: normal; white-space: nowrap; }
+    .select-all-wrap input { margin-right: 0.25rem; }
   </style>
 </head>
 <body>
@@ -51,11 +53,11 @@
     <h2><span class="step-badge">1</span>API Setup</h2>
     <label for="blToken">BaseLinker API token (X-BLToken)</label>
     <input type="password" id="blToken" placeholder="Váš token z BaseLinker → Účet → API" autocomplete="off">
-    <label for="inventoryId">INVENTORY_ID (ID katalogu)</label>
-    <input type="text" id="inventoryId" placeholder="např. 307">
-    <label for="fieldId">FIELD_ID (klíč pole popisu pro kanál)</label>
-    <input type="text" id="fieldId" placeholder="např. description nebo description|cs|kaufland_0">
-    <p class="sub" style="margin-top:-0.5rem;">Seznam dostupných klíčů získáte po kliknutí na „Testovat spojení“.</p>
+    <label for="inventoryId">INVENTORY_ID (ID katalogu – pro test spojení)</label>
+    <input type="text" id="inventoryId" placeholder="5257" value="5257">
+    <label for="fieldId">FIELD_ID (pro test – synchronizace jde vždy do Kaufland)</label>
+    <input type="text" id="fieldId" placeholder="např. description|cs|14257" value="description|cs|14257">
+    <p class="sub" style="margin-top:-0.5rem;">Synchronizace vždy cílí na kanál <strong>Kaufland (účet 14257)</strong>, inventory 5257. Seznam klíčů získáte po „Testovat spojení“.</p>
     <button type="button" class="btn" id="btnTestConnection">Testovat spojení</button>
     <div id="msg1" class="msg hidden"></div>
   </div>
@@ -90,6 +92,7 @@
       <table>
         <thead>
           <tr>
+            <th><label class="select-all-wrap"><input type="checkbox" id="checkAll" title="Vybrat vše"> Vybrat vše</label></th>
             <th>ID</th>
             <th>Název</th>
             <th>Původní HTML (náhled)</th>
@@ -99,7 +102,15 @@
         </thead>
         <tbody id="productsTableBody"></tbody>
       </table>
-      <button type="button" class="btn" id="btnSyncAll">Sync vše do BaseLinker</button>
+      <p class="sub" style="margin-top:0.5rem;">Synchronizace aktualizuje pouze popis pro kanál <strong>Kaufland (14257)</strong>, ne hlavní popis v katalogu.</p>
+      <div style="margin-top:0.75rem;">
+        <button type="button" class="btn" id="btnSyncSelected">Sync vybrané</button>
+      </div>
+      <div class="card" style="margin-top:1rem;">
+        <label for="singleProductId">Synchronizovat pouze jedno Product ID (pro testování)</label>
+        <input type="text" id="singleProductId" placeholder="např. 12345">
+        <button type="button" class="btn" id="btnSyncSingle">Synchronizovat pouze toto ID</button>
+      </div>
       <div id="msgSync" class="msg hidden"></div>
     </div>
   </div>
@@ -115,6 +126,10 @@
       const BL_STORAGE = 'bl_token';
       const INV_STORAGE = 'bl_inventory_id';
       const FIELD_STORAGE = 'bl_field_id';
+
+      // Synchronizace cílí pouze na kanál Kaufland – hlavní popis v katalogu zůstane nedotčen
+      const KAUFLAND_INVENTORY_ID = 5257;
+      const KAUFLAND_FIELD_ID = 'description|cs|14257'; // ID účtu Kaufland HejdukSport
 
       function getToken() { return sessionStorage.getItem(BL_STORAGE) || document.getElementById('blToken').value.trim(); }
       function getInventoryId() { return sessionStorage.getItem(INV_STORAGE) || document.getElementById('inventoryId').value.trim(); }
@@ -297,6 +312,7 @@
         productsList.forEach((p, i) => {
           const tr = document.createElement('tr');
           tr.innerHTML =
+            '<td><input type="checkbox" class="row-check" data-index="' + i + '"></td>' +
             '<td>' + escapeHtml(p.itemId) + '</td>' +
             '<td>' + escapeHtml(p.name) + '</td>' +
             '<td><div class="preview-html">' + escapeHtml(p.originalHtml.slice(0, 300)) + (p.originalHtml.length > 300 ? '…' : '') + '</div></td>' +
@@ -305,10 +321,32 @@
           tbody.appendChild(tr);
         });
         document.getElementById('productsTableWrap').classList.remove('hidden');
+        document.getElementById('checkAll').checked = false;
         tbody.querySelectorAll('.sync-one').forEach(btn => {
           btn.addEventListener('click', function () { syncOne(parseInt(this.getAttribute('data-index'), 10)); });
         });
+        tbody.querySelectorAll('.row-check').forEach(cb => {
+          cb.addEventListener('change', updateCheckAllState);
+        });
       }
+
+      function getSelectedIndices() {
+        return Array.from(document.querySelectorAll('.row-check:checked')).map(cb => parseInt(cb.getAttribute('data-index'), 10));
+      }
+
+      function updateCheckAllState() {
+        const all = document.querySelectorAll('.row-check');
+        const checked = document.querySelectorAll('.row-check:checked');
+        const checkAll = document.getElementById('checkAll');
+        if (!checkAll) return;
+        checkAll.checked = all.length > 0 && checked.length === all.length;
+        checkAll.indeterminate = checked.length > 0 && checked.length < all.length;
+      }
+
+      document.getElementById('checkAll').addEventListener('change', function () {
+        document.querySelectorAll('.row-check').forEach(cb => { cb.checked = this.checked; });
+        this.indeterminate = false;
+      });
 
       function escapeHtml(s) {
         const div = document.createElement('div');
@@ -368,24 +406,27 @@
         }
       });
 
+      function buildKauflandTextFields(cleanedHtml) {
+        const textFields = {};
+        textFields[KAUFLAND_FIELD_ID] = cleanedHtml;
+        return textFields;
+      }
+
       async function syncOne(index) {
         const p = products[index];
-        const inventoryId = getInventoryId();
-        const fieldId = getFieldId();
-        if (!inventoryId || !fieldId) {
-          showMsg('msgSync', 'Vyplňte INVENTORY_ID a FIELD_ID v kroku 1.', 'error');
+        if (!getToken()) {
+          showMsg('msgSync', 'Vyplňte BaseLinker token v kroku 1.', 'error');
           return;
         }
-        const textFields = {};
-        textFields[fieldId] = p.cleanedHtml;
+        const textFields = buildKauflandTextFields(p.cleanedHtml);
         try {
           const data = await callBaseLinker('addInventoryProduct', {
-            inventory_id: inventoryId,
+            inventory_id: KAUFLAND_INVENTORY_ID,
             product_id: p.itemId,
             text_fields: textFields,
           });
           if (data.status === 'SUCCESS') {
-            showMsg('msgSync', 'Produkt ' + p.itemId + ' synchronizován.', 'success');
+            showMsg('msgSync', 'Produkt ' + p.itemId + ' synchronizován do Kaufland (14257).', 'success');
           } else {
             showMsg('msgSync', (data.error_message || data.error || 'Chyba') + ' (produkt ' + p.itemId + ')', 'error');
           }
@@ -394,23 +435,28 @@
         }
       }
 
-      document.getElementById('btnSyncAll').addEventListener('click', async function () {
-        const inventoryId = getInventoryId();
-        const fieldId = getFieldId();
-        if (!inventoryId || !fieldId) {
-          showMsg('msgSync', 'Vyplňte INVENTORY_ID a FIELD_ID v kroku 1.', 'error');
+      document.getElementById('btnSyncSelected').addEventListener('click', async function () {
+        if (!getToken()) {
+          showMsg('msgSync', 'Vyplňte BaseLinker token v kroku 1.', 'error');
+          return;
+        }
+        const indices = getSelectedIndices();
+        if (indices.length === 0) {
+          showMsg('msgSync', 'Zaškrtněte alespoň jeden produkt.', 'error');
+          return;
+        }
+        if (indices.length > 5 && !confirm('Opravdu chcete aktualizovat ' + indices.length + ' produktů v účtu Kaufland (14257)?')) {
           return;
         }
         this.disabled = true;
-        showMsg('msgSync', 'Synchronizuji ' + products.length + ' produktů…', 'info');
+        showMsg('msgSync', 'Synchronizuji ' + indices.length + ' vybraných produktů do Kaufland…', 'info');
         let ok = 0, err = 0;
-        for (let i = 0; i < products.length; i++) {
+        for (const i of indices) {
           const p = products[i];
-          const textFields = {};
-          textFields[fieldId] = p.cleanedHtml;
+          const textFields = buildKauflandTextFields(p.cleanedHtml);
           try {
             const data = await callBaseLinker('addInventoryProduct', {
-              inventory_id: inventoryId,
+              inventory_id: KAUFLAND_INVENTORY_ID,
               product_id: p.itemId,
               text_fields: textFields,
             });
@@ -418,6 +464,27 @@
           } catch (_) { err++; }
         }
         showMsg('msgSync', 'Hotovo: ' + ok + ' OK, ' + err + ' chyb.', err ? 'error' : 'success');
+        this.disabled = false;
+      });
+
+      document.getElementById('btnSyncSingle').addEventListener('click', async function () {
+        const idStr = document.getElementById('singleProductId').value.trim();
+        if (!idStr) {
+          showMsg('msgSync', 'Zadejte Product ID.', 'error');
+          return;
+        }
+        if (!getToken()) {
+          showMsg('msgSync', 'Vyplňte BaseLinker token v kroku 1.', 'error');
+          return;
+        }
+        const index = products.findIndex(p => String(p.itemId) === idStr);
+        if (index === -1) {
+          showMsg('msgSync', 'Produkt s ID „' + idStr + '“ není v načteném feedu. Načtěte XML a zkuste znovu.', 'error');
+          return;
+        }
+        this.disabled = true;
+        showMsg('msgSync', 'Synchronizuji produkt ' + idStr + '…', 'info');
+        await syncOne(index);
         this.disabled = false;
       });
     })();
