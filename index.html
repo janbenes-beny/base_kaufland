@@ -56,8 +56,8 @@
     <label for="inventoryId">INVENTORY_ID (ID katalogu – pro test spojení)</label>
     <input type="text" id="inventoryId" placeholder="5257" value="5257">
     <label for="fieldId">FIELD_ID (pro test – synchronizace jde vždy do Kaufland)</label>
-    <input type="text" id="fieldId" placeholder="např. description|cs|14257" value="description|cs|14257">
-    <p class="sub" style="margin-top:-0.5rem;">Synchronizace vždy cílí na kanál <strong>Kaufland (účet 14257)</strong>, inventory 5257. Seznam klíčů získáte po „Testovat spojení“.</p>
+    <input type="text" id="fieldId" placeholder="např. description|cs|kaufland_14257" value="description|cs|kaufland_14257">
+    <p class="sub" style="margin-top:-0.5rem;">Synchronizace vždy cílí na kanál <strong>Kaufland (kaufland_14257)</strong>, inventory 5257. Klíč: <code>description|cs|kaufland_14257</code>. Seznam klíčů získáte po „Testovat spojení“.</p>
     <button type="button" class="btn" id="btnTestConnection">Testovat spojení</button>
     <div id="msg1" class="msg hidden"></div>
 
@@ -158,7 +158,7 @@
         </thead>
         <tbody id="productsTableBody"></tbody>
       </table>
-      <p class="sub" style="margin-top:0.5rem;">Synchronizace aktualizuje pouze popis pro kanál <strong>Kaufland (14257)</strong>, ne hlavní popis v katalogu.</p>
+      <p class="sub" style="margin-top:0.5rem;">Synchronizace aktualizuje pouze popis pro kanál <strong>Kaufland (kaufland_14257)</strong>, ne hlavní popis v katalogu.</p>
       <div style="margin-top:0.75rem;">
         <button type="button" class="btn" id="btnSyncSelected">Sync vybrané</button>
       </div>
@@ -186,7 +186,7 @@
 
       // Synchronizace cílí pouze na kanál Kaufland – hlavní popis v katalogu zůstane nedotčen
       const KAUFLAND_INVENTORY_ID = 5257;
-      const KAUFLAND_FIELD_ID = 'description|cs|14257'; // ID účtu Kaufland HejdukSport
+      const KAUFLAND_FIELD_ID = 'description|cs|kaufland_14257'; // [pole]|[jazyk]|[typIntegrace]_[idIntegrace]
 
       function getToken() { return sessionStorage.getItem(BL_STORAGE) || document.getElementById('blToken').value.trim(); }
       function getInventoryId() { return sessionStorage.getItem(INV_STORAGE) || document.getElementById('inventoryId').value.trim(); }
@@ -305,7 +305,7 @@
       // —— Upravit produkt (text_fields) podle pravidel čištění ——
       function getDescriptionFromTextFields(textFields) {
         if (!textFields || typeof textFields !== 'object') return '';
-        const keys = [KAUFLAND_FIELD_ID, 'description|cs|14257', 'description|cs', 'description'];
+        const keys = [KAUFLAND_FIELD_ID, 'description|cs|kaufland_14257', 'description|cs|14257', 'description|cs', 'description'];
         for (const k of keys) {
           const v = textFields[k];
           if (typeof v === 'string' && v.trim()) return v.trim();
@@ -705,7 +705,7 @@
             text_fields: textFields,
           });
           if (data.status === 'SUCCESS') {
-            showMsg(msgId, 'Produkt ' + p.itemId + ' synchronizován do Kaufland (14257).', 'success');
+            showMsg(msgId, 'Produkt ' + p.itemId + ' synchronizován do Kaufland (kaufland_14257).', 'success');
           } else {
             showMsg(msgId, (data.error_message || data.error || 'Chyba') + ' (produkt ' + p.itemId + ')', 'error');
           }
@@ -724,7 +724,7 @@
           showMsg('msgSync', 'Zaškrtněte alespoň jeden produkt.', 'error');
           return;
         }
-        if (indices.length > 5 && !confirm('Opravdu chcete aktualizovat ' + indices.length + ' produktů v účtu Kaufland (14257)?')) {
+        if (indices.length > 5 && !confirm('Opravdu chcete aktualizovat ' + indices.length + ' produktů v účtu Kaufland (kaufland_14257)?')) {
           return;
         }
         this.disabled = true;
