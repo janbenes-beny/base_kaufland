@@ -1,3 +1,4 @@
+// Project: base_kaufland
 const crypto = require('crypto');
 
 function sign(payload, secret) {

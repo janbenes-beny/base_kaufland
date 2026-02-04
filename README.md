@@ -102,3 +102,5 @@ Bez přihlášení a API, pouze lokální nahrání souboru:
 pip install -r requirements.txt
 streamlit run app.py
 ```
+
+---

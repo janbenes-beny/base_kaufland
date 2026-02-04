@@ -1,3 +1,4 @@
+# Project: base_kaufland
 # Lokální konfigurace s hesly a klíči – neposílat na GitHub
 .env
 .env.local

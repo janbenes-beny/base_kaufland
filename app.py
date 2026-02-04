@@ -4,6 +4,7 @@ Streamlit aplikace pro vyčištění produktového XML feedu z Heureka.cz
 pro Kaufland marketplace. Sanitizuje HTML v popisech produktů.
 """
 
+# Project: base_kaufland
 import re
 from typing import Optional
 

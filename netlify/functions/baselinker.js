@@ -1,4 +1,5 @@
 /**
+ * Project: base_kaufland
  * Proxy pro BaseLinker API (https://api.baselinker.com/).
  * Přijímá token, method a parameters a volá connector.php.
  */
