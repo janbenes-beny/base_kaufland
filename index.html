@@ -698,18 +698,28 @@
           return;
         }
         const textFields = buildKauflandTextFields(p.cleanedHtml);
+        const params = {
+          inventory_id: KAUFLAND_INVENTORY_ID,
+          product_id: p.itemId,
+          text_fields: textFields,
+        };
+        console.log('[Sync] Klik na Synchronizovat – odesílám addInventoryProduct:', {
+          method: 'addInventoryProduct',
+          inventory_id: params.inventory_id,
+          product_id: params.product_id,
+          text_fields_keys: Object.keys(params.text_fields),
+          text_fields_preview: { [KAUFLAND_FIELD_ID]: (params.text_fields[KAUFLAND_FIELD_ID] || '').slice(0, 100) + ((params.text_fields[KAUFLAND_FIELD_ID] || '').length > 100 ? '…' : '') },
+        });
         try {
-          const data = await callBaseLinker('addInventoryProduct', {
-            inventory_id: KAUFLAND_INVENTORY_ID,
-            product_id: p.itemId,
-            text_fields: textFields,
-          });
+          const data = await callBaseLinker('addInventoryProduct', params);
+          console.log('[Sync] Odpověď BaseLinker:', data);
           if (data.status === 'SUCCESS') {
             showMsg(msgId, 'Produkt ' + p.itemId + ' synchronizován do Kaufland (kaufland_14257).', 'success');
           } else {
             showMsg(msgId, (data.error_message || data.error || 'Chyba') + ' (produkt ' + p.itemId + ')', 'error');
           }
         } catch (e) {
+          console.error('[Sync] Chyba:', e);
           showMsg(msgId, 'Chyba: ' + wrapFetchError(e), 'error');
         }
       }
@@ -728,20 +738,24 @@
           return;
         }
         this.disabled = true;
+        console.log('[Sync] Sync vybrané – počet produktů:', indices.length, 'IDs:', indices.map(i => products[i].itemId));
         showMsg('msgSync', 'Synchronizuji ' + indices.length + ' vybraných produktů do Kaufland…', 'info');
         let ok = 0, err = 0;
         for (const i of indices) {
           const p = products[i];
           const textFields = buildKauflandTextFields(p.cleanedHtml);
+          const params = { inventory_id: KAUFLAND_INVENTORY_ID, product_id: p.itemId, text_fields: textFields };
+          console.log('[Sync] Produkt ' + p.itemId + ' – odesílám addInventoryProduct', params);
           try {
-            const data = await callBaseLinker('addInventoryProduct', {
-              inventory_id: KAUFLAND_INVENTORY_ID,
-              product_id: p.itemId,
-              text_fields: textFields,
-            });
+            const data = await callBaseLinker('addInventoryProduct', params);
+            console.log('[Sync] Produkt ' + p.itemId + ' – odpověď:', data);
             if (data.status === 'SUCCESS') ok++; else err++;
-          } catch (_) { err++; }
+          } catch (e) {
+            console.error('[Sync] Produkt ' + p.itemId + ' – chyba:', e);
+            err++;
+          }
         }
+        console.log('[Sync] Hotovo: ' + ok + ' OK, ' + err + ' chyb.');
         showMsg('msgSync', 'Hotovo: ' + ok + ' OK, ' + err + ' chyb.', err ? 'error' : 'success');
         this.disabled = false;
       });
