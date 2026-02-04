@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Heureka → Kaufland XML čistička</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+      background: #f5f5f5;
+      color: #1a1a1a;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    .sub { color: #555; font-size: 0.95rem; margin-bottom: 1.5rem; }
+    .upload-zone {
+      border: 2px dashed #999;
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      background: #fff;
+      margin-bottom: 1rem;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: #0066cc;
+      background: #f0f7ff;
+    }
+    .upload-zone input[type="file"] { display: none; }
+    .btn {
+      display: inline-block;
+      padding: 0.6rem 1.2rem;
+      background: #0066cc;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-top: 0.5rem;
+      margin-right: 0.5rem;
+    }
+    .btn:hover { background: #0052a3; }
+    .btn:disabled { background: #999; cursor: not-allowed; }
+    .btn.secondary { background: #555; }
+    .btn.secondary:hover { background: #333; }
+    .msg {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+    }
+    .msg.success { background: #d4edda; color: #155724; }
+    .msg.error { background: #f8d7da; color: #721c24; }
+    .msg.info { background: #e7f3ff; color: #004085; }
+    .login-box {
+      background: #fff;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 1rem;
+    }
+    .login-box label { display: block; margin-bottom: 0.25rem; font-weight: 500; }
+    .login-box input {
+      width: 100%;
+      padding: 0.5rem;
+      margin-bottom: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+    .toolbar { margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .tabs { display: flex; gap: 0.25rem; margin-bottom: 1rem; }
+    .tabs button {
+      padding: 0.5rem 1rem;
+      border: 1px solid #ccc;
+      background: #fff;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .tabs button.active { background: #0066cc; color: #fff; border-color: #0066cc; }
+    .hidden { display: none !important; }
+    .card { background: #fff; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; }
+    .api-options { margin-top: 0.75rem; font-size: 0.9rem; color: #555; }
+    .api-options input { margin-top: 0.25rem; }
+  </style>
+</head>
+<body>
+  <div id="loginScreen" class="login-box">
+    <h1>Přihlášení</h1>
+    <p class="sub">Přihlaste se pro přístup k čističce feedu a importu z API.</p>
+    <form id="loginForm">
+      <label for="loginUser">Uživatel</label>
+      <input type="text" id="loginUser" name="username" autocomplete="username" required>
+      <label for="loginPass">Heslo</label>
+      <input type="password" id="loginPass" name="password" autocomplete="current-password" required>
+      <button type="submit" class="btn" id="loginBtn">Přihlásit se</button>
+    </form>
+  </div>
+
+  <div id="appScreen" class="hidden">
+    <div class="toolbar">
+      <h1 style="margin:0; flex:1">Vyčištění produktového XML feedu</h1>
+      <button type="button" class="btn secondary" id="logoutBtn">Odhlásit se</button>
+    </div>
+    <p class="sub">Nahrajte XML nebo importujte z API. Aplikace vyčistí popisy podle požadavků Kaufland marketplace.</p>
+
+    <div class="tabs">
+      <button type="button" id="tabUpload" class="active">Nahrát soubor</button>
+      <button type="button" id="tabImport">Import z API</button>
+    </div>
+
+    <div id="panelUpload" class="card">
+      <div class="upload-zone" id="zone">
+        <input type="file" id="file" accept=".xml,application/xml,text/xml">
+        <p id="prompt">Přetáhněte sem XML soubor nebo klikněte pro výběr</p>
+      </div>
+    </div>
+
+    <div id="panelImport" class="card hidden">
+      <p>Stáhnout feed z nakonfigurovaného API (Base / Heureka feed URL).</p>
+      <div class="api-options">
+        <label>Vlastní feed URL (volitelné)</label>
+        <input type="url" id="feedUrl" placeholder="https://..." style="width:100%">
+        <label style="margin-top:0.5rem">API klíč (volitelné)</label>
+        <input type="password" id="feedApiKey" placeholder="API klíč" style="width:100%">
+      </div>
+      <button type="button" class="btn" id="importBtn">Importovat feed z API</button>
+    </div>
+
+    <div id="message"></div>
+    <button class="btn" id="download" disabled>Stáhnout vyčištěný XML</button>
+  </div>
+
+  <script>
+    (function () {
+      const FORBIDDEN_TAGS = new Set(['img', 'iframe', 'script', 'object', 'video', 'style', 'form']);
+      const ALLOWED_TAGS = new Set(['p', 'b', 'strong', 'ul', 'li', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+      const IMAGE_CAPTION_KEYWORDS = [
+        'velikostní tabulka', 'tabulka velikostí', 'rozměry', 'viz foto', 'viz obrázek',
+        'viz obrázek níže', 'viz foto níže', 'velikostní tabulka viz', 'rozměry viz'
+      ];
+
+      const API_BASE = ''; // relativní cesty na Netlify: /.netlify/functions/...
+      function apiUrl(path) {
+        if (path.startsWith('/')) return path;
+        return (API_BASE || '') + '/.netlify/functions' + (path.startsWith('/') ? path : '/' + path);
+      }
+
+      let token = sessionStorage.getItem('authToken');
+      const loginScreen = document.getElementById('loginScreen');
+      const appScreen = document.getElementById('appScreen');
+
+      function setLoggedIn(loggedIn) {
+        if (loggedIn) {
+          loginScreen.classList.add('hidden');
+          appScreen.classList.remove('hidden');
+        } else {
+          token = null;
+          sessionStorage.removeItem('authToken');
+          loginScreen.classList.remove('hidden');
+          appScreen.classList.add('hidden');
+        }
+      }
+
+      if (token) setLoggedIn(true);
+      else setLoggedIn(false);
+
+      document.getElementById('loginForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const btn = document.getElementById('loginBtn');
+        const user = document.getElementById('loginUser').value.trim();
+        const pass = document.getElementById('loginPass').value;
+        btn.disabled = true;
+        try {
+          const res = await fetch(apiUrl('/auth'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: user, password: pass }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            showMsg(data.error || 'Přihlášení se nezdařilo.', 'error');
+            return;
+          }
+          if (data.token) {
+            token = data.token;
+            sessionStorage.setItem('authToken', token);
+            setLoggedIn(true);
+            showMsg('', '');
+          }
+        } catch (err) {
+          showMsg('Chyba připojení: ' + (err.message || 'zkontrolujte síť.'), 'error');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      document.getElementById('logoutBtn').addEventListener('click', function () {
+        setLoggedIn(false);
+      });
+
+      document.getElementById('tabUpload').addEventListener('click', function () {
+        document.getElementById('tabUpload').classList.add('active');
+        document.getElementById('tabImport').classList.remove('active');
+        document.getElementById('panelUpload').classList.remove('hidden');
+        document.getElementById('panelImport').classList.add('hidden');
+      });
+      document.getElementById('tabImport').addEventListener('click', function () {
+        document.getElementById('tabImport').classList.add('active');
+        document.getElementById('tabUpload').classList.remove('active');
+        document.getElementById('panelImport').classList.remove('hidden');
+        document.getElementById('panelUpload').classList.add('hidden');
+      });
+
+      function normalizeText(s) {
+        if (!s || typeof s !== 'string') return '';
+        return s.toLowerCase().replace(/\s+/g, ' ').trim();
+      }
+      function textContainsKeyword(text) {
+        const n = normalizeText(text);
+        return n && IMAGE_CAPTION_KEYWORDS.some(kw => n.includes(kw));
+      }
+      function getElementText(el) {
+        return el ? (el.textContent || '').trim() : '';
+      }
+
+      function cleanHtmlDescription(html) {
+        if (!html || typeof html !== 'string') return '';
+        const trimmed = html.trim();
+        if (!trimmed) return '';
+        const parser = new DOMParser();
+        const doc = parser.parseFromString('<div id="_root">' + trimmed + '</div>', 'text/html');
+        const root = doc.getElementById('_root');
+        if (!root) return trimmed;
+        const toRemove = new Set();
+        root.querySelectorAll('img').forEach(img => {
+          toRemove.add(img);
+          const parent = img.parentElement;
+          const prev = img.previousElementSibling;
+          const next = img.nextElementSibling;
+          if (parent && parent !== root && textContainsKeyword(getElementText(parent))) toRemove.add(parent);
+          if (prev && textContainsKeyword(getElementText(prev))) toRemove.add(prev);
+          if (next && textContainsKeyword(getElementText(next))) toRemove.add(next);
+        });
+        FORBIDDEN_TAGS.forEach(tag => root.querySelectorAll(tag).forEach(el => toRemove.add(el)));
+        const byDepth = Array.from(toRemove);
+        byDepth.sort((a, b) => {
+          let d = 0, x = a;
+          while (x && x.parentElement) { x = x.parentElement; d++; }
+          let e = 0, y = b;
+          while (y && y.parentElement) { y = y.parentElement; e++; }
+          return d - e;
+        });
+        byDepth.forEach(el => { if (el.parentNode) el.remove(); });
+        root.querySelectorAll('*').forEach(el => {
+          if (!ALLOWED_TAGS.has(el.tagName.toLowerCase())) {
+            const frag = doc.createDocumentFragment();
+            while (el.firstChild) frag.appendChild(el.firstChild);
+            el.parentNode.replaceChild(frag, el);
+          }
+        });
+        return root.innerHTML.trim() || '';
+      }
+
+      function processHeurekaXml(xmlString) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlString, 'text/xml');
+        const parseError = doc.querySelector('parsererror');
+        if (parseError) throw new Error('Nevalidní XML: ' + (parseError.textContent || 'neznámá chyba'));
+        const shopItems = doc.querySelectorAll('SHOPITEM');
+        if (!shopItems.length) throw new Error('V XML se nenašel žádný element SHOPITEM.');
+        shopItems.forEach(item => {
+          ['DESCRIPTION', 'LONG_DESCRIPTION'].forEach(tagName => {
+            const desc = item.querySelector(tagName);
+            if (!desc) return;
+            let raw = '';
+            if (desc.childNodes.length) {
+              desc.childNodes.forEach(n => {
+                if (n.nodeType === Node.TEXT_NODE) raw += n.textContent;
+                if (n.nodeType === Node.CDATA_SECTION_NODE) raw += n.textContent;
+                if (n.nodeType === Node.ELEMENT_NODE) raw += new XMLSerializer().serializeToString(n);
+              });
+            } else raw = (desc.textContent || '').trim();
+            if (!raw.trim()) return;
+            const cleaned = cleanHtmlDescription(raw);
+            while (desc.firstChild) desc.removeChild(desc.firstChild);
+            desc.appendChild(doc.createTextNode(cleaned));
+          });
+        });
+        return new XMLSerializer().serializeToString(doc);
+      }
+
+      const zone = document.getElementById('zone');
+      const fileInput = document.getElementById('file');
+      const prompt = document.getElementById('prompt');
+      const message = document.getElementById('message');
+      const downloadBtn = document.getElementById('download');
+      const importBtn = document.getElementById('importBtn');
+      let lastResult = null;
+
+      function showMsg(text, type) {
+        message.className = 'msg ' + (type || '');
+        message.textContent = text || '';
+        if (!text) message.style.display = 'none';
+        else message.style.display = 'block';
+      }
+
+      function setResult(xmlString) {
+        lastResult = xmlString;
+        prompt.textContent = 'Zpracováno. Stáhněte soubor níže.';
+        downloadBtn.disabled = false;
+        showMsg('XML bylo úspěšně zpracováno. Stáhněte soubor níže.', 'success');
+      }
+
+      function handleFile(file) {
+        if (!file || !file.name.toLowerCase().endsWith('.xml')) {
+          showMsg('Vyberte prosím soubor typu .xml', 'error');
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = function () {
+          try {
+            const xmlString = typeof reader.result === 'string' ? reader.result : new TextDecoder('utf-8').decode(reader.result);
+            setResult(processHeurekaXml(xmlString));
+          } catch (e) {
+            showMsg(e.message || 'Chyba při zpracování.', 'error');
+            downloadBtn.disabled = true;
+          }
+        };
+        reader.onerror = function () { showMsg('Nepodařilo se načíst soubor.', 'error'); };
+        reader.readAsText(file, 'UTF-8');
+      }
+
+      importBtn.addEventListener('click', async function () {
+        if (!token) {
+          showMsg('Nejste přihlášeni.', 'error');
+          return;
+        }
+        importBtn.disabled = true;
+        showMsg('Načítám feed z API…', 'info');
+        try {
+          const body = {};
+          const url = document.getElementById('feedUrl').value.trim();
+          const apiKey = document.getElementById('feedApiKey').value;
+          if (url) body.feedUrl = url;
+          if (apiKey) body.apiKey = apiKey;
+          const res = await fetch(apiUrl('/import-feed'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token,
+            },
+            body: Object.keys(body).length ? JSON.stringify(body) : undefined,
+          });
+          const text = await res.text();
+          if (!res.ok) {
+            const err = (() => { try { return JSON.parse(text); } catch { return {}; } })();
+            showMsg(err.error || text || 'Import se nezdařil.', 'error');
+            return;
+          }
+          setResult(processHeurekaXml(text));
+        } catch (e) {
+          showMsg('Chyba: ' + (e.message || 'zkontrolujte síť.'), 'error');
+        } finally {
+          importBtn.disabled = false;
+        }
+      });
+
+      zone.addEventListener('click', () => fileInput.click());
+      zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+      zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+      zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) handleFile(f);
+      });
+      fileInput.addEventListener('change', function () {
+        const f = this.files && this.files[0];
+        if (f) handleFile(f);
+      });
+
+      downloadBtn.addEventListener('click', function () {
+        if (!lastResult) return;
+        const blob = new Blob(['\ufeff' + lastResult], { type: 'application/xml;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'kaufland_feed_cleaned.xml';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+    })();
+  </script>
+</body>
+</html>
