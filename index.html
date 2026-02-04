@@ -178,11 +178,26 @@
 
       function callBaseLinker(method, parameters) {
         const token = getToken();
-        return fetch(apiUrl('/baselinker'), {
+        const url = apiUrl('/baselinker');
+        if (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:') {
+          return Promise.reject(new Error('Stránka běží jako soubor (file://). API nefunguje. Spusťte lokálně: netlify dev — pak otevřete adresu např. http://localhost:8888'));
+        }
+        return fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token, method, parameters }),
-        }).then(r => r.json());
+        }).then(r => {
+          if (!r.ok) return r.text().then(t => Promise.reject(new Error(r.status + ' ' + r.statusText + (t ? ': ' + t.slice(0, 200) : ''))));
+          return r.json();
+        });
+      }
+
+      function wrapFetchError(e) {
+        const msg = e && e.message ? e.message : String(e);
+        if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+          return 'Síťová chyba (Failed to fetch). Spusťte lokálně příkaz „netlify dev“ a otevřete v prohlížeči adresu, kterou vypíše (např. http://localhost:8888). Nebo nasaďte aplikaci na Netlify a používejte ji tam.';
+        }
+        return msg;
       }
 
       // —— Test spojení ——
@@ -208,7 +223,7 @@
             showMsg('msg1', (data.error_message || data.error || 'Chyba API') + (data.error_code ? ' (kód: ' + data.error_code + ')' : ''), 'error');
           }
         } catch (e) {
-          showMsg('msg1', 'Chyba: ' + (e.message || 'síť'), 'error');
+          showMsg('msg1', 'Chyba: ' + wrapFetchError(e), 'error');
         } finally {
           this.disabled = false;
         }
@@ -248,8 +263,9 @@
             showMsg('msg1', (data.error_message || data.error || 'Chyba API') + (data.error_code ? ' (kód: ' + data.error_code + ')' : ''), 'error');
           }
         } catch (e) {
-          document.getElementById('productInfoOutput').textContent = 'Chyba: ' + (e.message || 'síť');
-          showMsg('msg1', 'Chyba: ' + (e.message || 'síť'), 'error');
+          const errText = wrapFetchError(e);
+          document.getElementById('productInfoOutput').textContent = 'Chyba: ' + errText;
+          showMsg('msg1', 'Chyba: ' + errText, 'error');
         } finally {
           this.disabled = false;
         }
@@ -551,7 +567,7 @@
             showMsg('msgSync', (data.error_message || data.error || 'Chyba') + ' (produkt ' + p.itemId + ')', 'error');
           }
         } catch (e) {
-          showMsg('msgSync', 'Chyba: ' + (e.message || ''), 'error');
+          showMsg('msgSync', 'Chyba: ' + wrapFetchError(e), 'error');
         }
       }
 
