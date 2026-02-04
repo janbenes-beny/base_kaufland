@@ -410,11 +410,19 @@
         }
 
         const toRemove = new Set();
-        // Pomocná: přidá blok za obrázkem/tabulkou (následující sourozenec rodiče), pokud obsahuje sirotčí frázi
+        // Pomocná: přidá bloky za obrázkem/tabulkou – projde až 8 následujících sourozenců a odstraní ty s sirotčí frází (popisek může být o pár bloků dál)
         function markCaptionAfter(parent) {
           if (!parent || parent === root) return;
-          const parentNext = parent.nextElementSibling;
-          if (parentNext && containsOrphan(getText(parentNext))) toRemove.add(parentNext);
+          let el = parent.nextElementSibling;
+          let count = 0;
+          while (el && count < 8) {
+            if (containsOrphan(getText(el))) {
+              toRemove.add(el);
+              break;
+            }
+            el = el.nextElementSibling;
+            count++;
+          }
         }
         root.querySelectorAll('img').forEach(el => {
           toRemove.add(el);
@@ -443,7 +451,9 @@
           let e = 0, y = b; while (y && y.parentElement) { y = y.parentElement; e++; }
           return d - e;
         });
-        byDepth.forEach(el => { if (el.parentNode) el.remove(); });
+        byDepth.forEach(el => {
+          if (el.parentNode) el.remove();
+        });
 
         if (tableToList) {
           root.querySelectorAll('table').forEach(table => {
