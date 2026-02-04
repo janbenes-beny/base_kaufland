@@ -69,6 +69,24 @@
     <div id="productInfoWrap" class="hidden" style="margin-top:0.75rem;">
       <strong>Odpověď API:</strong>
       <pre id="productInfoOutput" class="preview-html" style="max-height:320px; margin-top:0.25rem; font-size:0.8rem;"></pre>
+      <button type="button" class="btn hidden" id="btnEditProduct" style="margin-top:0.75rem;">Upravit podle pravidel čištění</button>
+    </div>
+    <div id="productEditTableWrap" class="hidden" style="margin-top:1rem;">
+      <h4>Tabulka produktu (původní × vyčištěné text_fields)</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Název</th>
+            <th>Původní HTML (náhled)</th>
+            <th>Nové HTML (náhled)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="productEditTableBody"></tbody>
+      </table>
+      <button type="button" class="btn" id="btnSyncEditedProduct" style="margin-top:0.5rem;">Synchronizovat do Kaufland</button>
+      <div id="msgEditSync" class="msg hidden" style="margin-top:0.5rem;"></div>
     </div>
   </div>
 
@@ -156,6 +174,7 @@
       }
 
       let products = [];
+      let lastLoadedProductData = null; // { productId, product } po Načíst informace o produktu
       const BL_STORAGE = 'bl_token';
       const INV_STORAGE = 'bl_inventory_id';
       const FIELD_STORAGE = 'bl_field_id';
@@ -259,6 +278,13 @@
           const out = document.getElementById('productInfoOutput');
           out.textContent = JSON.stringify(data, null, 2);
           document.getElementById('productInfoWrap').classList.remove('hidden');
+          if (data.status === 'SUCCESS' && data.products && data.products[String(productId)]) {
+            lastLoadedProductData = { productId: productId, product: data.products[String(productId)] };
+            document.getElementById('btnEditProduct').classList.remove('hidden');
+          } else {
+            lastLoadedProductData = null;
+            document.getElementById('btnEditProduct').classList.add('hidden');
+          }
           if (data.status !== 'SUCCESS') {
             showMsg('msg1', (data.error_message || data.error || 'Chyba API') + (data.error_code ? ' (kód: ' + data.error_code + ')' : ''), 'error');
           }
@@ -269,6 +295,58 @@
         } finally {
           this.disabled = false;
         }
+      });
+
+      // —— Upravit produkt (text_fields) podle pravidel čištění ——
+      function getDescriptionFromTextFields(textFields) {
+        if (!textFields || typeof textFields !== 'object') return '';
+        const keys = [KAUFLAND_FIELD_ID, 'description|cs|14257', 'description|cs', 'description'];
+        for (const k of keys) {
+          const v = textFields[k];
+          if (typeof v === 'string' && v.trim()) return v.trim();
+        }
+        return '';
+      }
+
+      function getNameFromTextFields(textFields) {
+        if (!textFields || typeof textFields !== 'object') return '';
+        const n = textFields['name'] || textFields['name|cs'];
+        if (typeof n === 'string') return n.trim();
+        return '';
+      }
+
+      document.getElementById('btnEditProduct').addEventListener('click', function () {
+        if (!lastLoadedProductData) return;
+        const { productId, product } = lastLoadedProductData;
+        const tf = product.text_fields || {};
+        const originalHtml = getDescriptionFromTextFields(tf);
+        const name = getNameFromTextFields(tf) || ('Produkt ' + productId);
+        const allowedTagsSet = parseAllowedTags(document.getElementById('allowedTags').value);
+        const orphanPhrases = parseOrphanPhrases(document.getElementById('orphanPhrases').value);
+        const tableToList = document.getElementById('tableToList').checked;
+        const cleanedHtml = cleanDescription(originalHtml, allowedTagsSet, orphanPhrases, tableToList);
+        products = [{ itemId: String(productId), name: name, originalHtml: originalHtml, cleanedHtml: cleanedHtml }];
+        const tbody = document.getElementById('productEditTableBody');
+        tbody.innerHTML =
+          '<tr>' +
+          '<td>' + escapeHtml(String(productId)) + '</td>' +
+          '<td>' + escapeHtml(name) + '</td>' +
+          '<td><div class="preview-html">' + escapeHtml(originalHtml.slice(0, 300)) + (originalHtml.length > 300 ? '…' : '') + '</div></td>' +
+          '<td><div class="preview-html">' + escapeHtml(cleanedHtml.slice(0, 300)) + (cleanedHtml.length > 300 ? '…' : '') + '</div></td>' +
+          '<td><button type="button" class="btn" id="btnSyncEditedOne">Sync</button></td>' +
+          '</tr>';
+        document.getElementById('productEditTableWrap').classList.remove('hidden');
+        document.getElementById('msgEditSync').classList.add('hidden');
+        document.getElementById('btnSyncEditedOne').addEventListener('click', async function () {
+          document.getElementById('msgEditSync').classList.remove('hidden');
+          await syncOne(0, 'msgEditSync');
+        });
+      });
+
+      document.getElementById('btnSyncEditedProduct').addEventListener('click', async function () {
+        if (products.length === 0) return;
+        document.getElementById('msgEditSync').classList.remove('hidden');
+        await syncOne(0, 'msgEditSync');
       });
 
       // Při načtení stránky obnovit krok 2 a 3 pokud už byl test
@@ -548,10 +626,12 @@
         return textFields;
       }
 
-      async function syncOne(index) {
+      async function syncOne(index, msgElId) {
+        const msgId = msgElId || 'msgSync';
         const p = products[index];
+        if (!p) return;
         if (!getToken()) {
-          showMsg('msgSync', 'Vyplňte BaseLinker token v kroku 1.', 'error');
+          showMsg(msgId, 'Vyplňte BaseLinker token v kroku 1.', 'error');
           return;
         }
         const textFields = buildKauflandTextFields(p.cleanedHtml);
@@ -562,12 +642,12 @@
             text_fields: textFields,
           });
           if (data.status === 'SUCCESS') {
-            showMsg('msgSync', 'Produkt ' + p.itemId + ' synchronizován do Kaufland (14257).', 'success');
+            showMsg(msgId, 'Produkt ' + p.itemId + ' synchronizován do Kaufland (14257).', 'success');
           } else {
-            showMsg('msgSync', (data.error_message || data.error || 'Chyba') + ' (produkt ' + p.itemId + ')', 'error');
+            showMsg(msgId, (data.error_message || data.error || 'Chyba') + ' (produkt ' + p.itemId + ')', 'error');
           }
         } catch (e) {
-          showMsg('msgSync', 'Chyba: ' + wrapFetchError(e), 'error');
+          showMsg(msgId, 'Chyba: ' + wrapFetchError(e), 'error');
         }
       }
 
