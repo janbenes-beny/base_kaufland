@@ -5,64 +5,31 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Čištění popisů Heureka → BaseLinker</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, sans-serif; max-width: 900px; margin: 0 auto; padding: 1.5rem; background: #f5f5f5; color: #1a1a1a; }
-    h1 { font-size: 1.35rem; margin-bottom: 0.25rem; }
-    h2 { font-size: 1.1rem; margin: 1.25rem 0 0.5rem; }
-    .sub { color: #555; font-size: 0.9rem; margin-bottom: 1rem; }
-    .card { background: #fff; padding: 1.25rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-    label { display: block; margin-bottom: 0.25rem; font-weight: 500; font-size: 0.9rem; }
-    input[type="text"], input[type="password"], input[type="url"], textarea {
-      width: 100%; padding: 0.5rem; margin-bottom: 0.75rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem;
-    }
-    textarea { min-height: 60px; resize: vertical; }
-    .btn {
-      display: inline-block; padding: 0.5rem 1rem; background: #0066cc; color: #fff; border: none; border-radius: 6px;
-      font-size: 0.95rem; cursor: pointer; margin-right: 0.5rem; margin-top: 0.25rem;
-    }
-    .btn:hover { background: #0052a3; }
-    .btn:disabled { background: #999; cursor: not-allowed; }
-    .btn.secondary { background: #555; }
-    .msg { margin-top: 0.75rem; padding: 0.6rem; border-radius: 6px; font-size: 0.9rem; }
-    .msg.success { background: #d4edda; color: #155724; }
-    .msg.error { background: #f8d7da; color: #721c24; }
-    .msg.info { background: #e7f3ff; color: #004085; }
-    .hidden { display: none !important; }
-    .step { margin-bottom: 1.5rem; }
-    .toggle-wrap { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
-    .toggle-wrap input[type="checkbox"] { width: auto; margin: 0; }
-    .upload-zone { border: 2px dashed #999; border-radius: 8px; padding: 1.5rem; text-align: center; background: #fafafa; cursor: pointer; margin-bottom: 0.75rem; }
-    .upload-zone:hover { border-color: #0066cc; background: #f0f7ff; }
-    .upload-zone input[type="file"] { display: none; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-    th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
-    th { background: #eee; }
-    .preview-html { max-height: 120px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; }
-    .step-badge { background: #0066cc; color: #fff; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; margin-right: 0.5rem; }
-    .select-all-wrap { font-weight: normal; white-space: nowrap; }
-    .select-all-wrap input { margin-right: 0.25rem; }
-  </style>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <h1>Čištění produktových popisů (Heureka XML → BaseLinker)</h1>
-  <p class="sub">Nastavte API, pravidla čištění, nahrajte feed a synchronizujte do BaseLinker.</p>
+  <h1>Čištění produktových popisů (BaseLinker)</h1>
+  <p class="sub">Nastavte API, pravidla čištění, vyberte produkty z katalogu a synchronizujte popisy do vybraného kanálu.</p>
 
   <!-- Krok 1: API Setup -->
   <div class="step card" id="step1">
     <h2><span class="step-badge">1</span>API Setup</h2>
     <label for="blToken">BaseLinker API token (X-BLToken)</label>
     <input type="password" id="blToken" placeholder="Váš token z BaseLinker → Účet → API" autocomplete="off">
-    <label for="inventoryId">INVENTORY_ID (ID katalogu – pro test spojení)</label>
+    <label for="inventoryId">INVENTORY_ID (ID katalogu)</label>
     <input type="text" id="inventoryId" placeholder="5257" value="5257">
-    <label for="fieldId">FIELD_ID (pro test – synchronizace jde vždy do Kaufland)</label>
-    <input type="text" id="fieldId" placeholder="např. description|cs|kauflandcz_0" value="description|cs|kauflandcz_0">
-    <p class="sub" style="margin-top:-0.5rem;">Synchronizace cílí na integraci <strong>Kaufland (kauflandcz_0)</strong>, inventory 5257. Klíč: <code>description|cs|kauflandcz_0</code> = všechny účty Kaufland. Seznam klíčů získáte po „Testovat spojení“.</p>
-    <button type="button" class="btn" id="btnTestConnection">Testovat spojení</button>
+    <label for="fieldId">Kanál (účet) pro synchronizaci popisů</label>
+    <select id="fieldId">
+      <option value="description|cs|kauflandcz_0">Kaufland</option>
+      <option value="description|cs|sportisimo_0">Sportisimo</option>
+      <option value="description|cs|decathlon_0">Decathlon</option>
+      <option value="description|cs|alza_0">Alza</option>
+    </select>
+    <button type="button" class="btn" id="btnVerifyConnection">Ověřit spojení</button>
     <div id="msg1" class="msg hidden"></div>
 
-    <h3 style="margin-top:1.25rem;">Načíst produkt podle ID (test spojení)</h3>
-    <p class="sub">Zadejte Product ID z katalogu – zobrazí se data produktu z BaseLinker API (metoda getInventoryProductsData).</p>
+    <h3 style="margin-top:1.25rem;">Načíst produkt podle ID</h3>
+    <p class="sub">Zadejte Product ID z katalogu – zobrazí se data produktu z BaseLinker API.</p>
     <label for="testProductId">Product ID</label>
     <input type="text" id="testProductId" placeholder="např. 2685">
     <button type="button" class="btn" id="btnGetProductInfo">Načíst informace o produktu</button>
@@ -89,8 +56,40 @@
         <button type="button" class="btn secondary" id="btnCopyOriginalHtml">Kopírovat celé původní HTML</button>
         <button type="button" class="btn secondary" id="btnCopyNewHtml">Kopírovat celé nové HTML</button>
       </div>
-      <button type="button" class="btn" id="btnSyncEditedProduct" style="margin-top:0.5rem;">Synchronizovat do Kaufland</button>
+      <button type="button" class="btn" id="btnSyncEditedProduct" style="margin-top:0.5rem;">Synchronizovat do vybraného kanálu</button>
       <div id="msgEditSync" class="msg hidden" style="margin-top:0.5rem;"></div>
+    </div>
+
+    <h3 style="margin-top:1.5rem;">Načíst seznam produktů z katalogu</h3>
+    <p class="sub">Načte základní seznam produktů (ID, název) z BaseLinker. Vyfiltrujte, vyberte jeden nebo více a připravte k čištění popisů.</p>
+    <button type="button" class="btn" id="btnLoadCatalogList">Načíst seznam produktů</button>
+    <div id="msgCatalog" class="msg hidden"></div>
+    <div id="catalogListWrap" class="hidden" style="margin-top:1rem;">
+      <h4>Seznam produktů z katalogu</h4>
+      <div class="catalog-filters">
+        <label for="filterCatalogId">Filtrovat ID</label>
+        <input type="text" id="filterCatalogId" placeholder="např. 2685 nebo část ID">
+        <label for="filterCatalogName">Filtrovat název</label>
+        <input type="text" id="filterCatalogName" placeholder="část názvu produktu">
+      </div>
+      <table class="catalog-table">
+        <thead>
+          <tr>
+            <th class="col-check"><label class="select-all-wrap"><input type="checkbox" id="checkAllCatalog" title="Vybrat vše na stránce"> Vybrat</label></th>
+            <th class="col-id">ID</th>
+            <th class="col-name">Název</th>
+          </tr>
+        </thead>
+        <tbody id="catalogListBody"></tbody>
+      </table>
+      <div class="pagination-wrap">
+        <button type="button" class="btn secondary" id="btnCatalogPrev" disabled>Předchozí</button>
+        <span id="catalogPageInfo" class="page-info">Stránka 1 z 1</span>
+        <button type="button" class="btn secondary" id="btnCatalogNext" disabled>Další</button>
+      </div>
+      <p class="sub" style="margin-top:0.5rem;">Vyberte produkty a klikněte na „Připravit vybrané k čištění“. Načtou se jejich popisy, vyčistí a půjdou synchronizovat v kroku 3.</p>
+      <button type="button" class="btn" id="btnPrepareSelected" style="margin-top:0.5rem;">Připravit vybrané k čištění</button>
+      <div id="msgPrepare" class="msg hidden" style="margin-top:0.5rem;"></div>
     </div>
   </div>
 
@@ -108,41 +107,9 @@
     </div>
   </div>
 
-  <!-- Krok 3: Processing -->
+  <!-- Krok 3: Připravené produkty a synchronizace -->
   <div class="step card hidden" id="step3">
-    <h2><span class="step-badge">3</span>Zpracování</h2>
-    <label>XML feed</label>
-    <div class="upload-zone" id="uploadZone">
-      <input type="file" id="fileInput" accept=".xml,application/xml,text/xml">
-      <p id="uploadPrompt">Přetáhněte XML soubor sem nebo klikněte pro výběr</p>
-    </div>
-    <label for="feedUrl">Nebo URL feedu</label>
-    <input type="url" id="feedUrl" placeholder="https://...">
-    <button type="button" class="btn" id="btnLoadUrl">Načíst z URL</button>
-    <div id="msg3" class="msg hidden"></div>
-    <div id="pickOneWrap" class="hidden">
-      <h3>Seznam produktů</h3>
-      <p class="sub">Načteno <span id="productCount">0</span> produktů. Vyberte z tabulky produkt, který chcete upravit a synchronizovat.</p>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Název</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="productListBody"></tbody>
-      </table>
-      <div id="oneProductPreview" class="hidden card" style="margin-top:1rem;">
-        <h4 id="oneProductTitle"></h4>
-        <p><strong>Původní HTML (náhled):</strong></p>
-        <div class="preview-html" id="oneOriginal" style="max-height:180px;"></div>
-        <p style="margin-top:0.75rem;"><strong>Vyčištěné HTML (náhled):</strong></p>
-        <div class="preview-html" id="oneCleaned" style="max-height:180px;"></div>
-        <button type="button" class="btn" id="btnSyncThisOne" style="margin-top:0.75rem;">Synchronizovat do Kaufland</button>
-      </div>
-      <p style="margin-top:1rem;"><button type="button" class="btn secondary" id="btnShowAllProducts">Zobrazit všechny s náhledem HTML (tabulka)</button></p>
-    </div>
+    <h2><span class="step-badge">3</span>Synchronizace</h2>
     <div id="productsTableWrap" class="hidden">
       <h3>Tabulka produktů</h3>
       <table>
@@ -153,14 +120,13 @@
             <th>Název</th>
             <th>Původní HTML (náhled)</th>
             <th>Nové HTML (náhled)</th>
-            <th>Sync</th>
           </tr>
         </thead>
         <tbody id="productsTableBody"></tbody>
       </table>
-      <p class="sub" style="margin-top:0.5rem;">Synchronizace aktualizuje pouze popis pro integraci <strong>Kaufland (kauflandcz_0)</strong>, ne hlavní popis v katalogu.</p>
+      <p class="sub" style="margin-top:0.5rem;">Synchronizace aktualizuje pouze popis pro vybraný kanál, ne hlavní popis v katalogu.</p>
       <div style="margin-top:0.75rem;">
-        <button type="button" class="btn" id="btnSyncSelected">Sync vybrané</button>
+        <button type="button" class="btn" id="btnSyncSelected">Synchronizovat vybrané</button>
       </div>
       <div class="card" style="margin-top:1rem;">
         <label for="singleProductId">Synchronizovat pouze jedno Product ID (pro testování)</label>
@@ -171,616 +137,6 @@
     </div>
   </div>
 
-  <script>
-    (function () {
-      const API_BASE = '';
-      function apiUrl(path) {
-        return (API_BASE || '') + '/.netlify/functions' + (path.startsWith('/') ? path : '/' + path);
-      }
-
-      let products = [];
-      let lastLoadedProductData = null; // { productId, product } po Načíst informace o produktu
-      const BL_STORAGE = 'bl_token';
-      const INV_STORAGE = 'bl_inventory_id';
-      const FIELD_STORAGE = 'bl_field_id';
-
-      // Synchronizace cílí pouze na kanál Kaufland – hlavní popis v katalogu zůstane nedotčen
-      const KAUFLAND_INVENTORY_ID = 5257;
-      const KAUFLAND_FIELD_ID = 'description|cs|kauflandcz_0'; // [pole]|[jazyk]|[integrace]_0 = všechny účty Kaufland
-
-      function getToken() { return sessionStorage.getItem(BL_STORAGE) || document.getElementById('blToken').value.trim(); }
-      function getInventoryId() { return sessionStorage.getItem(INV_STORAGE) || document.getElementById('inventoryId').value.trim(); }
-      function getFieldId() { return sessionStorage.getItem(FIELD_STORAGE) || document.getElementById('fieldId').value.trim(); }
-
-      function showMsg(elId, text, type) {
-        const el = document.getElementById(elId);
-        if (!el) return;
-        el.textContent = text || '';
-        el.className = 'msg ' + (type || '');
-        el.classList.toggle('hidden', !text);
-      }
-
-      function callBaseLinker(method, parameters) {
-        const token = getToken();
-        const url = apiUrl('/baselinker');
-        if (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:') {
-          return Promise.reject(new Error('Stránka běží jako soubor (file://). API nefunguje. Spusťte lokálně: netlify dev — pak otevřete adresu např. http://localhost:8888'));
-        }
-        return fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, method, parameters }),
-        }).then(r => {
-          if (!r.ok) return r.text().then(t => Promise.reject(new Error(r.status + ' ' + r.statusText + (t ? ': ' + t.slice(0, 200) : ''))));
-          return r.json();
-        });
-      }
-
-      function wrapFetchError(e) {
-        const msg = e && e.message ? e.message : String(e);
-        if (/failed to fetch|networkerror|load failed/i.test(msg)) {
-          return 'Síťová chyba (Failed to fetch). Spusťte lokálně příkaz „netlify dev“ a otevřete v prohlížeči adresu, kterou vypíše (např. http://localhost:8888). Nebo nasaďte aplikaci na Netlify a používejte ji tam.';
-        }
-        return msg;
-      }
-
-      // —— Test spojení ——
-      document.getElementById('btnTestConnection').addEventListener('click', async function () {
-        const token = document.getElementById('blToken').value.trim();
-        const inventoryId = document.getElementById('inventoryId').value.trim();
-        if (!token || !inventoryId) {
-          showMsg('msg1', 'Vyplňte token a INVENTORY_ID.', 'error');
-          return;
-        }
-        this.disabled = true;
-        showMsg('msg1', 'Kontroluji spojení…', 'info');
-        try {
-          const data = await callBaseLinker('getInventoryAvailableTextFieldKeys', { inventory_id: parseInt(inventoryId, 10) });
-          if (data.status === 'SUCCESS') {
-            sessionStorage.setItem(BL_STORAGE, token);
-            sessionStorage.setItem(INV_STORAGE, inventoryId);
-            sessionStorage.setItem(FIELD_STORAGE, document.getElementById('fieldId').value.trim());
-            showMsg('msg1', 'Spojení v pořádku. Dostupná textová pole: ' + Object.keys(data.text_field_keys || {}).join(', ') + '. Pokračujte na krok 2.', 'success');
-            document.getElementById('step2').classList.remove('hidden');
-            document.getElementById('step3').classList.remove('hidden');
-          } else {
-            showMsg('msg1', (data.error_message || data.error || 'Chyba API') + (data.error_code ? ' (kód: ' + data.error_code + ')' : ''), 'error');
-          }
-        } catch (e) {
-          showMsg('msg1', 'Chyba: ' + wrapFetchError(e), 'error');
-        } finally {
-          this.disabled = false;
-        }
-      });
-
-      // —— Načíst produkt podle ID (getInventoryProductsData) ——
-      document.getElementById('btnGetProductInfo').addEventListener('click', async function () {
-        const token = getToken();
-        const inventoryId = getInventoryId() || String(KAUFLAND_INVENTORY_ID);
-        const productIdStr = document.getElementById('testProductId').value.trim();
-        if (!token) {
-          showMsg('msg1', 'Vyplňte BaseLinker token.', 'error');
-          return;
-        }
-        if (!productIdStr) {
-          showMsg('msg1', 'Zadejte Product ID.', 'error');
-          return;
-        }
-        const productId = parseInt(productIdStr, 10);
-        if (isNaN(productId)) {
-          showMsg('msg1', 'Product ID musí být číslo.', 'error');
-          return;
-        }
-        this.disabled = true;
-        document.getElementById('productInfoWrap').classList.add('hidden');
-        document.getElementById('productInfoOutput').textContent = 'Načítám…';
-        document.getElementById('productInfoWrap').classList.remove('hidden');
-        try {
-          const data = await callBaseLinker('getInventoryProductsData', {
-            inventory_id: parseInt(inventoryId, 10),
-            products: [productId],
-          });
-          const out = document.getElementById('productInfoOutput');
-          out.textContent = JSON.stringify(data, null, 2);
-          document.getElementById('productInfoWrap').classList.remove('hidden');
-          if (data.status === 'SUCCESS' && data.products && data.products[String(productId)]) {
-            lastLoadedProductData = { productId: productId, product: data.products[String(productId)] };
-            document.getElementById('btnEditProduct').classList.remove('hidden');
-          } else {
-            lastLoadedProductData = null;
-            document.getElementById('btnEditProduct').classList.add('hidden');
-          }
-          if (data.status !== 'SUCCESS') {
-            showMsg('msg1', (data.error_message || data.error || 'Chyba API') + (data.error_code ? ' (kód: ' + data.error_code + ')' : ''), 'error');
-          }
-        } catch (e) {
-          const errText = wrapFetchError(e);
-          document.getElementById('productInfoOutput').textContent = 'Chyba: ' + errText;
-          showMsg('msg1', 'Chyba: ' + errText, 'error');
-        } finally {
-          this.disabled = false;
-        }
-      });
-
-      // —— Upravit produkt (text_fields) podle pravidel čištění ——
-      function getDescriptionFromTextFields(textFields) {
-        if (!textFields || typeof textFields !== 'object') return '';
-        const keys = [KAUFLAND_FIELD_ID, 'description|cs|kauflandcz_0', 'description|cs|kaufland_14257', 'description|cs', 'description'];
-        for (const k of keys) {
-          const v = textFields[k];
-          if (typeof v === 'string' && v.trim()) return v.trim();
-        }
-        return '';
-      }
-
-      function getNameFromTextFields(textFields) {
-        if (!textFields || typeof textFields !== 'object') return '';
-        const n = textFields['name'] || textFields['name|cs'];
-        if (typeof n === 'string') return n.trim();
-        return '';
-      }
-
-      document.getElementById('btnEditProduct').addEventListener('click', function () {
-        if (!lastLoadedProductData) return;
-        const { productId, product } = lastLoadedProductData;
-        const tf = product.text_fields || {};
-        const originalHtml = getDescriptionFromTextFields(tf);
-        const name = getNameFromTextFields(tf) || ('Produkt ' + productId);
-        const allowedTagsSet = parseAllowedTags(document.getElementById('allowedTags').value);
-        const orphanPhrases = parseOrphanPhrases(document.getElementById('orphanPhrases').value);
-        const tableToList = document.getElementById('tableToList').checked;
-        const cleanedHtml = cleanDescription(originalHtml, allowedTagsSet, orphanPhrases, tableToList);
-        products = [{ itemId: String(productId), name: name, originalHtml: originalHtml, cleanedHtml: cleanedHtml }];
-        const tbody = document.getElementById('productEditTableBody');
-        tbody.innerHTML =
-          '<tr>' +
-          '<td>' + escapeHtml(String(productId)) + '</td>' +
-          '<td>' + escapeHtml(name) + '</td>' +
-          '<td><div class="preview-html">' + escapeHtml(originalHtml.slice(0, 300)) + (originalHtml.length > 300 ? '…' : '') + '</div></td>' +
-          '<td><div class="preview-html">' + escapeHtml(cleanedHtml.slice(0, 300)) + (cleanedHtml.length > 300 ? '…' : '') + '</div></td>' +
-          '<td><button type="button" class="btn" id="btnSyncEditedOne">Sync</button></td>' +
-          '</tr>';
-        document.getElementById('productEditTableWrap').classList.remove('hidden');
-        document.getElementById('msgEditSync').classList.add('hidden');
-        document.getElementById('btnSyncEditedOne').addEventListener('click', async function () {
-          document.getElementById('msgEditSync').classList.remove('hidden');
-          await syncOne(0, 'msgEditSync');
-        });
-      });
-
-      document.getElementById('btnSyncEditedProduct').addEventListener('click', async function () {
-        if (products.length === 0) return;
-        document.getElementById('msgEditSync').classList.remove('hidden');
-        await syncOne(0, 'msgEditSync');
-      });
-
-      function copyToClipboard(text, msgElId) {
-        const msgId = msgElId || 'msgEditSync';
-        if (!text) { showMsg(msgId, 'Nic ke zkopírování.', 'error'); return; }
-        navigator.clipboard.writeText(text).then(() => {
-          showMsg(msgId, 'Zkopírováno do schránky.', 'success');
-        }).catch(() => {
-          showMsg(msgId, 'Kopírování se nepovedlo.', 'error');
-        });
-      }
-
-      document.getElementById('btnCopyOriginalHtml').addEventListener('click', function () {
-        if (products.length === 0) return;
-        document.getElementById('msgEditSync').classList.remove('hidden');
-        copyToClipboard(products[0].originalHtml, 'msgEditSync');
-      });
-      document.getElementById('btnCopyNewHtml').addEventListener('click', function () {
-        if (products.length === 0) return;
-        document.getElementById('msgEditSync').classList.remove('hidden');
-        copyToClipboard(products[0].cleanedHtml, 'msgEditSync');
-      });
-
-      // Při načtení stránky obnovit krok 2 a 3 pokud už byl test
-      if (sessionStorage.getItem(BL_STORAGE)) {
-        document.getElementById('inventoryId').value = sessionStorage.getItem(INV_STORAGE) || '';
-        document.getElementById('fieldId').value = sessionStorage.getItem(FIELD_STORAGE) || '';
-        document.getElementById('step2').classList.remove('hidden');
-        document.getElementById('step3').classList.remove('hidden');
-      }
-
-      // —— Cleaning logic ——
-      function parseAllowedTags(str) {
-        return new Set(str.split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
-      }
-      function parseOrphanPhrases(str) {
-        return str.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-      }
-
-      function cleanDescription(html, allowedTagsSet, orphanPhrases, tableToList) {
-        if (!html || typeof html !== 'string') return '';
-        const trimmed = html.trim();
-        if (!trimmed) return '';
-
-        const parser = new DOMParser();
-        const doc = parser.parseFromString('<div id="_r">' + trimmed + '</div>', 'text/html');
-        const root = doc.getElementById('_r');
-        if (!root) return trimmed;
-
-        function getText(el) {
-          return (el && (el.textContent || '').trim()) || '';
-        }
-        function containsOrphan(text) {
-          const t = ((text || '').trim()).toLowerCase();
-          return orphanPhrases.some(p => t.includes((p || '').toLowerCase()));
-        }
-
-        const toRemove = new Set();
-        // Pomocná: přidá bloky za obrázkem/tabulkou – projde až 8 následujících sourozenců a odstraní ty s sirotčí frází
-        function markCaptionAfter(block) {
-          if (!block || block === root) return;
-          let el = block.nextElementSibling;
-          let count = 0;
-          while (el && count < 8) {
-            if (containsOrphan(getText(el))) {
-              toRemove.add(el);
-              break;
-            }
-            el = el.nextElementSibling;
-            count++;
-          }
-        }
-        // Obrázek může být v <p><a><img></a></p> – rodič je <a>, ten nemá nextElementSibling; musíme jít na blok (<p>)
-        function getBlockAncestor(el) {
-          while (el && el !== root) {
-            if (el.nextElementSibling != null) return el;
-            el = el.parentElement;
-          }
-          return el && el !== root ? el : null;
-        }
-        root.querySelectorAll('img').forEach(el => {
-          toRemove.add(el);
-          const parent = el.parentElement;
-          const prev = el.previousElementSibling;
-          const next = el.nextElementSibling;
-          if (parent && parent !== root && containsOrphan(getText(parent))) toRemove.add(parent);
-          if (prev && containsOrphan(getText(prev))) toRemove.add(prev);
-          if (next && containsOrphan(getText(next))) toRemove.add(next);
-          const block = getBlockAncestor(parent);
-          markCaptionAfter(block);
-          if (parent && parent.tagName === 'A') toRemove.add(parent);
-        });
-        root.querySelectorAll('table').forEach(el => {
-          if (!tableToList) toRemove.add(el);
-          const parent = el.parentElement;
-          const prev = el.previousElementSibling;
-          const next = el.nextElementSibling;
-          if (parent && parent !== root && containsOrphan(getText(parent))) toRemove.add(parent);
-          if (prev && containsOrphan(getText(prev))) toRemove.add(prev);
-          if (next && containsOrphan(getText(next))) toRemove.add(next);
-          markCaptionAfter(getBlockAncestor(parent));
-        });
-
-        const byDepth = Array.from(toRemove);
-        byDepth.sort((a, b) => {
-          let d = 0, x = a; while (x && x.parentElement) { x = x.parentElement; d++; }
-          let e = 0, y = b; while (y && y.parentElement) { y = y.parentElement; e++; }
-          return d - e;
-        });
-        byDepth.forEach(el => {
-          if (el.parentNode) el.remove();
-        });
-
-        if (tableToList) {
-          root.querySelectorAll('table').forEach(table => {
-            const ul = doc.createElement('ul');
-            table.querySelectorAll('tr').forEach(tr => {
-              const li = doc.createElement('li');
-              const parts = [];
-              tr.querySelectorAll('td, th').forEach(cell => parts.push(cell.textContent.trim()));
-              li.textContent = parts.join(' – ');
-              ul.appendChild(li);
-            });
-            table.parentNode.replaceChild(ul, table);
-          });
-        }
-
-        root.querySelectorAll('*').forEach(el => {
-          const tag = el.tagName.toLowerCase();
-          if (!allowedTagsSet.has(tag)) {
-            const frag = doc.createDocumentFragment();
-            while (el.firstChild) frag.appendChild(el.firstChild);
-            el.parentNode.replaceChild(frag, el);
-          } else {
-            while (el.attributes.length) el.removeAttribute(el.attributes[0].name);
-          }
-        });
-
-        const emptyBlockTags = ['p', 'div'];
-        emptyBlockTags.forEach(tag => {
-          root.querySelectorAll(tag).forEach(el => {
-            if (!(el.textContent || '').trim() && el.parentNode) el.remove();
-          });
-        });
-
-        let result = root.innerHTML.trim() || '';
-        result = result.replace(/\&nbsp;/g, ' ').replace(/\u00A0/g, ' ');
-        return result;
-      }
-
-      function processXml(xmlString) {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(xmlString, 'text/xml');
-        const err = doc.querySelector('parsererror');
-        if (err) throw new Error('Nevalidní XML: ' + (err.textContent || ''));
-
-        const allowedTagsSet = parseAllowedTags(document.getElementById('allowedTags').value);
-        const orphanPhrases = parseOrphanPhrases(document.getElementById('orphanPhrases').value);
-        const tableToList = document.getElementById('tableToList').checked;
-
-        const items = doc.querySelectorAll('SHOPITEM');
-        if (!items.length) throw new Error('V XML není žádný SHOPITEM.');
-
-        const result = [];
-        items.forEach(item => {
-          const itemId = (item.querySelector('ITEM_ID') && item.querySelector('ITEM_ID').textContent) || '';
-          const name = (item.querySelector('PRODUCTNAME') && item.querySelector('PRODUCTNAME').textContent) || '';
-          let raw = '';
-          const desc = item.querySelector('DESCRIPTION') || item.querySelector('LONG_DESCRIPTION');
-          if (desc) {
-            if (desc.childNodes.length) {
-              desc.childNodes.forEach(n => {
-                if (n.nodeType === Node.TEXT_NODE) raw += n.textContent;
-                if (n.nodeType === Node.CDATA_SECTION_NODE) raw += n.textContent;
-                if (n.nodeType === Node.ELEMENT_NODE) raw += new XMLSerializer().serializeToString(n);
-              });
-            } else raw = (desc.textContent || '').trim();
-          }
-          const cleaned = cleanDescription(raw, allowedTagsSet, orphanPhrases, tableToList);
-          result.push({ itemId, name, originalHtml: raw, cleanedHtml: cleaned });
-        });
-        return result;
-      }
-
-      function renderTable(productsList) {
-        products = productsList;
-        const tbody = document.getElementById('productsTableBody');
-        tbody.innerHTML = '';
-        productsList.forEach((p, i) => {
-          const tr = document.createElement('tr');
-          tr.innerHTML =
-            '<td><input type="checkbox" class="row-check" data-index="' + i + '"></td>' +
-            '<td>' + escapeHtml(p.itemId) + '</td>' +
-            '<td>' + escapeHtml(p.name) + '</td>' +
-            '<td><div class="preview-html">' + escapeHtml(p.originalHtml.slice(0, 300)) + (p.originalHtml.length > 300 ? '…' : '') + '</div></td>' +
-            '<td><div class="preview-html">' + escapeHtml(p.cleanedHtml.slice(0, 300)) + (p.cleanedHtml.length > 300 ? '…' : '') + '</div></td>' +
-            '<td><button type="button" class="btn sync-one" data-index="' + i + '">Sync</button></td>';
-          tbody.appendChild(tr);
-        });
-        document.getElementById('productsTableWrap').classList.remove('hidden');
-        document.getElementById('checkAll').checked = false;
-        tbody.querySelectorAll('.sync-one').forEach(btn => {
-          btn.addEventListener('click', function () { syncOne(parseInt(this.getAttribute('data-index'), 10)); });
-        });
-        tbody.querySelectorAll('.row-check').forEach(cb => {
-          cb.addEventListener('change', updateCheckAllState);
-        });
-      }
-
-      function getSelectedIndices() {
-        return Array.from(document.querySelectorAll('.row-check:checked')).map(cb => parseInt(cb.getAttribute('data-index'), 10));
-      }
-
-      function updateCheckAllState() {
-        const all = document.querySelectorAll('.row-check');
-        const checked = document.querySelectorAll('.row-check:checked');
-        const checkAll = document.getElementById('checkAll');
-        if (!checkAll) return;
-        checkAll.checked = all.length > 0 && checked.length === all.length;
-        checkAll.indeterminate = checked.length > 0 && checked.length < all.length;
-      }
-
-      document.getElementById('checkAll').addEventListener('change', function () {
-        document.querySelectorAll('.row-check').forEach(cb => { cb.checked = this.checked; });
-        this.indeterminate = false;
-      });
-
-      function escapeHtml(s) {
-        const div = document.createElement('div');
-        div.textContent = s;
-        return div.innerHTML;
-      }
-
-      function loadXmlContent(xmlString) {
-        showMsg('msg3', 'Zpracovávám…', 'info');
-        try {
-          const list = processXml(xmlString);
-          products = list;
-          showMsg('msg3', 'Načteno ' + list.length + ' produktů. Vyberte jeden produkt níže.', 'success');
-          showPickOne(list);
-          document.getElementById('productsTableWrap').classList.add('hidden');
-        } catch (e) {
-          showMsg('msg3', e.message || 'Chyba zpracování.', 'error');
-        }
-      }
-
-      function showPickOne(productsList) {
-        const wrap = document.getElementById('pickOneWrap');
-        const tbody = document.getElementById('productListBody');
-        const countEl = document.getElementById('productCount');
-        countEl.textContent = productsList.length;
-        tbody.innerHTML = '';
-        productsList.forEach((p, i) => {
-          const tr = document.createElement('tr');
-          tr.innerHTML =
-            '<td>' + escapeHtml(p.itemId || '') + '</td>' +
-            '<td>' + escapeHtml(p.name || '') + '</td>' +
-            '<td><button type="button" class="btn btn-pick-one" data-index="' + i + '">Vybrat</button></td>';
-          tbody.appendChild(tr);
-        });
-        document.getElementById('oneProductPreview').classList.add('hidden');
-        wrap.classList.remove('hidden');
-        tbody.querySelectorAll('.btn-pick-one').forEach(btn => {
-          btn.addEventListener('click', function () {
-            showOneProductPreview(parseInt(this.getAttribute('data-index'), 10));
-          });
-        });
-      }
-
-      function showOneProductPreview(idx) {
-        const p = products[idx];
-        document.getElementById('oneProductTitle').textContent = (p.itemId || '') + ' – ' + (p.name || '');
-        document.getElementById('oneOriginal').innerHTML = escapeHtml(p.originalHtml.slice(0, 500)) + (p.originalHtml.length > 500 ? '…' : '');
-        document.getElementById('oneCleaned').innerHTML = escapeHtml(p.cleanedHtml.slice(0, 500)) + (p.cleanedHtml.length > 500 ? '…' : '');
-        document.getElementById('oneProductPreview').classList.remove('hidden');
-        document.getElementById('btnSyncThisOne').setAttribute('data-index', idx);
-        document.getElementById('singleProductId').value = p.itemId;
-        document.getElementById('oneProductPreview').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-
-      document.getElementById('btnSyncThisOne').addEventListener('click', function () {
-        const idx = this.getAttribute('data-index');
-        if (idx != null) syncOne(parseInt(idx, 10));
-      });
-
-      document.getElementById('btnShowAllProducts').addEventListener('click', function () {
-        document.getElementById('pickOneWrap').classList.add('hidden');
-        renderTable(products);
-      });
-
-      document.getElementById('uploadZone').addEventListener('click', () => document.getElementById('fileInput').click());
-      document.getElementById('uploadZone').addEventListener('dragover', e => { e.preventDefault(); document.getElementById('uploadZone').style.borderColor = '#0066cc'; });
-      document.getElementById('uploadZone').addEventListener('dragleave', () => { document.getElementById('uploadZone').style.borderColor = ''; });
-      document.getElementById('uploadZone').addEventListener('drop', e => {
-        e.preventDefault();
-        document.getElementById('uploadZone').style.borderColor = '';
-        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (f && f.name.toLowerCase().endsWith('.xml')) {
-          const r = new FileReader();
-          r.onload = () => loadXmlContent(r.result);
-          r.readAsText(f, 'UTF-8');
-          document.getElementById('uploadPrompt').textContent = 'Načteno: ' + f.name;
-        }
-      });
-      document.getElementById('fileInput').addEventListener('change', function () {
-        const f = this.files && this.files[0];
-        if (f) {
-          const r = new FileReader();
-          r.onload = () => loadXmlContent(r.result);
-          r.readAsText(f, 'UTF-8');
-          document.getElementById('uploadPrompt').textContent = 'Načteno: ' + f.name;
-        }
-      });
-
-      document.getElementById('btnLoadUrl').addEventListener('click', async function () {
-        const url = document.getElementById('feedUrl').value.trim();
-        if (!url) { showMsg('msg3', 'Zadejte URL feedu.', 'error'); return; }
-        this.disabled = true;
-        showMsg('msg3', 'Stahuji…', 'info');
-        try {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
-          const text = await res.text();
-          loadXmlContent(text);
-        } catch (e) {
-          showMsg('msg3', 'Chyba: ' + (e.message || 'síť'), 'error');
-        } finally {
-          this.disabled = false;
-        }
-      });
-
-      function buildKauflandTextFields(cleanedHtml) {
-        const textFields = {};
-        textFields[KAUFLAND_FIELD_ID] = cleanedHtml;
-        return textFields;
-      }
-
-      async function syncOne(index, msgElId) {
-        const msgId = msgElId || 'msgSync';
-        const p = products[index];
-        if (!p) return;
-        if (!getToken()) {
-          showMsg(msgId, 'Vyplňte BaseLinker token v kroku 1.', 'error');
-          return;
-        }
-        const textFields = buildKauflandTextFields(p.cleanedHtml);
-        const params = {
-          inventory_id: KAUFLAND_INVENTORY_ID,
-          product_id: p.itemId,
-          text_fields: textFields,
-        };
-        console.log('[Sync] Klik na Synchronizovat – odesílám addInventoryProduct:', {
-          method: 'addInventoryProduct',
-          inventory_id: params.inventory_id,
-          product_id: params.product_id,
-          text_fields_keys: Object.keys(params.text_fields),
-          text_fields_preview: { [KAUFLAND_FIELD_ID]: (params.text_fields[KAUFLAND_FIELD_ID] || '').slice(0, 100) + ((params.text_fields[KAUFLAND_FIELD_ID] || '').length > 100 ? '…' : '') },
-        });
-        try {
-          const data = await callBaseLinker('addInventoryProduct', params);
-          console.log('[Sync] Odpověď BaseLinker:', data);
-          if (data.status === 'SUCCESS') {
-            showMsg(msgId, 'Produkt ' + p.itemId + ' synchronizován do Kaufland (kauflandcz_0).', 'success');
-          } else {
-            showMsg(msgId, (data.error_message || data.error || 'Chyba') + ' (produkt ' + p.itemId + ')', 'error');
-          }
-        } catch (e) {
-          console.error('[Sync] Chyba:', e);
-          showMsg(msgId, 'Chyba: ' + wrapFetchError(e), 'error');
-        }
-      }
-
-      document.getElementById('btnSyncSelected').addEventListener('click', async function () {
-        if (!getToken()) {
-          showMsg('msgSync', 'Vyplňte BaseLinker token v kroku 1.', 'error');
-          return;
-        }
-        const indices = getSelectedIndices();
-        if (indices.length === 0) {
-          showMsg('msgSync', 'Zaškrtněte alespoň jeden produkt.', 'error');
-          return;
-        }
-        if (indices.length > 5 && !confirm('Opravdu chcete aktualizovat ' + indices.length + ' produktů v integraci Kaufland (kauflandcz_0)?')) {
-          return;
-        }
-        this.disabled = true;
-        console.log('[Sync] Sync vybrané – počet produktů:', indices.length, 'IDs:', indices.map(i => products[i].itemId));
-        showMsg('msgSync', 'Synchronizuji ' + indices.length + ' vybraných produktů do Kaufland…', 'info');
-        let ok = 0, err = 0;
-        for (const i of indices) {
-          const p = products[i];
-          const textFields = buildKauflandTextFields(p.cleanedHtml);
-          const params = { inventory_id: KAUFLAND_INVENTORY_ID, product_id: p.itemId, text_fields: textFields };
-          console.log('[Sync] Produkt ' + p.itemId + ' – odesílám addInventoryProduct', params);
-          try {
-            const data = await callBaseLinker('addInventoryProduct', params);
-            console.log('[Sync] Produkt ' + p.itemId + ' – odpověď:', data);
-            if (data.status === 'SUCCESS') ok++; else err++;
-          } catch (e) {
-            console.error('[Sync] Produkt ' + p.itemId + ' – chyba:', e);
-            err++;
-          }
-        }
-        console.log('[Sync] Hotovo: ' + ok + ' OK, ' + err + ' chyb.');
-        showMsg('msgSync', 'Hotovo: ' + ok + ' OK, ' + err + ' chyb.', err ? 'error' : 'success');
-        this.disabled = false;
-      });
-
-      document.getElementById('btnSyncSingle').addEventListener('click', async function () {
-        const idStr = document.getElementById('singleProductId').value.trim();
-        if (!idStr) {
-          showMsg('msgSync', 'Zadejte Product ID.', 'error');
-          return;
-        }
-        if (!getToken()) {
-          showMsg('msgSync', 'Vyplňte BaseLinker token v kroku 1.', 'error');
-          return;
-        }
-        const index = products.findIndex(p => String(p.itemId) === idStr);
-        if (index === -1) {
-          showMsg('msgSync', 'Produkt s ID „' + idStr + '“ není v načteném feedu. Načtěte XML a zkuste znovu.', 'error');
-          return;
-        }
-        this.disabled = true;
-        showMsg('msgSync', 'Synchronizuji produkt ' + idStr + '…', 'info');
-        await syncOne(index);
-        this.disabled = false;
-      });
-    })();
-  </script>
+  <script src="app.js"></script>
 </body>
 </html>
