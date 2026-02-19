@@ -345,7 +345,7 @@
       .map(function (id) { return parseInt(id, 10); })
       .filter(function (n) { return !isNaN(n); });
     const allProducts = {};
-    const batchSize = 1000;
+    const batchSize = 100; // menší dávky kvůli limitu velikosti odpovědi Netlify funkce
     for (let start = 0; start < numIds.length; start += batchSize) {
       const batch = numIds.slice(start, start + batchSize);
       const data = await callBaseLinker('getInventoryProductsData', {
