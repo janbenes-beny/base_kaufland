@@ -8,14 +8,54 @@ body {
   width: 100%;
   margin: 0;
   padding: 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
   background: #f5f5f5;
   color: #1a1a1a;
+}
+
+/* Přihlašovací karta vystředěná na stránce */
+#loginScreen {
+  max-width: 480px;
+  width: 100%;
+  margin: auto;
 }
 
 h1 { font-size: 1.35rem; margin-bottom: 0.25rem; }
 h2 { font-size: 1.1rem; margin: 1.25rem 0 0.5rem; }
 
 .sub { color: #555; font-size: 0.9rem; margin-bottom: 1rem; }
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.modal-content {
+  position: relative;
+  max-width: 520px;
+  width: 100%;
+  z-index: 1001;
+}
 
 .card {
   background: #fff;

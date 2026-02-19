@@ -8,130 +8,126 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <h1>Čištění produktových popisů (BaseLinker)</h1>
-  <p class="sub">Nastavte API, pravidla čištění, vyberte produkty z katalogu a synchronizujte popisy do vybraného kanálu.</p>
+  <!-- Login screen – pouze API klíč, INVENTORY_ID je napevno v kódu -->
+  <div class="step card" id="loginScreen">
+    <h1>Přihlášení do BaseLinker čističky</h1>
+    <p class="sub">Zadejte pouze BaseLinker API Key (X-BLToken).</p>
+    <label for="loginApiKey">BaseLinker API Key (X-BLToken)</label>
+    <input type="password" id="loginApiKey" placeholder="Váš API klíč" autocomplete="off">
+    <button type="button" class="btn" id="btnLogin">Přihlásit se</button>
+    <div id="loginMsg" class="msg hidden"></div>
+  </div>
 
-  <!-- Krok 1: API Setup -->
-  <div class="step card" id="step1">
-    <h2><span class="step-badge">1</span>API Setup</h2>
-    <label for="blToken">BaseLinker API token (X-BLToken)</label>
-    <input type="password" id="blToken" placeholder="Váš token z BaseLinker → Účet → API" autocomplete="off">
-    <label for="inventoryId">INVENTORY_ID (ID katalogu)</label>
-    <input type="text" id="inventoryId" placeholder="5257" value="5257">
-    <label for="fieldId">Kanál (účet) pro synchronizaci popisů</label>
-    <select id="fieldId">
-      <option value="description|cs|kauflandcz_0">Kaufland</option>
-      <option value="description|cs|sportisimo_0">Sportisimo</option>
-      <option value="description|cs|decathlon_0">Decathlon</option>
-      <option value="description|cs|alza_0">Alza</option>
-    </select>
-    <button type="button" class="btn" id="btnVerifyConnection">Ověřit spojení</button>
-    <div id="msg1" class="msg hidden"></div>
-
-    <h3 style="margin-top:1.25rem;">Načíst produkt podle ID</h3>
-    <p class="sub">Zadejte Product ID z katalogu – zobrazí se data produktu z BaseLinker API.</p>
-    <label for="testProductId">Product ID</label>
-    <input type="text" id="testProductId" placeholder="např. 2685">
-    <button type="button" class="btn" id="btnGetProductInfo">Načíst informace o produktu</button>
-    <div id="productInfoWrap" class="hidden" style="margin-top:0.75rem;">
-      <strong>Odpověď API:</strong>
-      <pre id="productInfoOutput" class="preview-html" style="max-height:320px; margin-top:0.25rem; font-size:0.8rem;"></pre>
-      <button type="button" class="btn hidden" id="btnEditProduct" style="margin-top:0.75rem;">Upravit podle pravidel čištění</button>
+  <!-- Hlavní dashboard (zobrazuje se až po přihlášení) -->
+  <div id="dashboard" class="hidden">
+    <div class="toolbar">
+      <h1>Čištění produktových popisů (BaseLinker)</h1>
+      <button type="button" class="btn secondary" id="btnOpenSettings">Nastavení</button>
     </div>
-    <div id="productEditTableWrap" class="hidden" style="margin-top:1rem;">
-      <h4>Tabulka produktu (původní × vyčištěné text_fields)</h4>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Název</th>
-            <th>Původní HTML (náhled)</th>
-            <th>Nové HTML (náhled)</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="productEditTableBody"></tbody>
-      </table>
-      <div style="margin-top:0.75rem;">
-        <button type="button" class="btn secondary" id="btnCopyOriginalHtml">Kopírovat celé původní HTML</button>
-        <button type="button" class="btn secondary" id="btnCopyNewHtml">Kopírovat celé nové HTML</button>
-      </div>
-      <button type="button" class="btn" id="btnSyncEditedProduct" style="margin-top:0.5rem;">Synchronizovat do vybraného kanálu</button>
-      <div id="msgEditSync" class="msg hidden" style="margin-top:0.5rem;"></div>
+    <p class="sub">Vyberte produkty z katalogu a synchronizujte vyčištěné popisy do vybraného kanálu.</p>
+
+  <!-- Krok 1: základní nastavení + seznam produktů -->
+  <div class="step card" id="step1">
+    <h2>Základní nastavení</h2>
+    <div id="apiSetupRow">
+      <label for="blToken">BaseLinker API token (X-BLToken)</label>
+      <input type="password" id="blToken" placeholder="Váš token z BaseLinker → Účet → API" autocomplete="off">
+      <label for="inventoryId">INVENTORY_ID (ID katalogu, pevně nastaveno)</label>
+      <input type="text" id="inventoryId" placeholder="5257" value="5257" readonly>
+      <button type="button" class="btn" id="btnVerifyConnection">Ověřit spojení</button>
+      <div id="msg1" class="msg hidden"></div>
     </div>
 
     <h3 style="margin-top:1.5rem;">Načíst seznam produktů z katalogu</h3>
-    <p class="sub">Načte základní seznam produktů (ID, název) z BaseLinker. Vyfiltrujte, vyberte jeden nebo více a připravte k čištění popisů.</p>
+    <p class="sub">Načte seznam produktů (ID, název) z BaseLinker. Vyfiltrujte, vyberte jeden nebo více a připravte k čištění popisů.</p>
     <button type="button" class="btn" id="btnLoadCatalogList">Načíst seznam produktů</button>
     <div id="msgCatalog" class="msg hidden"></div>
     <div id="catalogListWrap" class="hidden" style="margin-top:1rem;">
       <h4>Seznam produktů z katalogu</h4>
-      <div class="catalog-filters">
-        <label for="filterCatalogId">Filtrovat ID</label>
-        <input type="text" id="filterCatalogId" placeholder="např. 2685 nebo část ID">
-        <label for="filterCatalogName">Filtrovat název</label>
-        <input type="text" id="filterCatalogName" placeholder="část názvu produktu">
-      </div>
       <table class="catalog-table">
         <thead>
           <tr>
             <th class="col-check"><label class="select-all-wrap"><input type="checkbox" id="checkAllCatalog" title="Vybrat vše na stránce"> Vybrat</label></th>
-            <th class="col-id">ID</th>
-            <th class="col-name">Název</th>
+            <th class="col-id">ID<br><input type="text" id="filterCatalogId" placeholder="Filtrovat ID"></th>
+            <th class="col-name">Název<br><input type="text" id="filterCatalogName" placeholder="Filtrovat název"></th>
           </tr>
         </thead>
         <tbody id="catalogListBody"></tbody>
       </table>
       <div class="pagination-wrap">
-        <button type="button" class="btn secondary" id="btnCatalogPrev" disabled>Předchozí</button>
+        <button type="button" class="btn secondary" id="btnCatalogPrev" disabled>&lt;</button>
         <span id="catalogPageInfo" class="page-info">Stránka 1 z 1</span>
-        <button type="button" class="btn secondary" id="btnCatalogNext" disabled>Další</button>
+        <button type="button" class="btn secondary" id="btnCatalogNext" disabled>&gt;</button>
       </div>
-      <p class="sub" style="margin-top:0.5rem;">Vyberte produkty a klikněte na „Připravit vybrané k čištění“. Načtou se jejich popisy, vyčistí a půjdou synchronizovat v kroku 3.</p>
-      <button type="button" class="btn" id="btnPrepareSelected" style="margin-top:0.5rem;">Připravit vybrané k čištění</button>
+      <p class="sub" style="margin-top:0.5rem;">
+        Vyberte konkrétní produkty v tabulce a tlačítkem „Připravit vybrané k čištění“ z nich vytvoříte náhled vyčištěných popisů níže.
+        Tlačítko „Vyčistit celý seznam“ provede stejnou přípravu pro všechny produkty z aktuálně zobrazeného seznamu.
+        „Filtrovat pouze nevyčištěné“ seznam zúží jen na produkty, které ještě nemají popis v právě vybraném kanálu.
+      </p>
+      <div style="margin-top:0.5rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <button type="button" class="btn" id="btnPrepareSelected">Připravit vybrané k čištění</button>
+        <button type="button" class="btn secondary" id="btnPrepareAll">Vyčistit celý seznam</button>
+        <button type="button" class="btn secondary" id="btnFilterUncleaned">Filtrovat pouze nevyčištěné</button>
+      </div>
+      <div id="msgFilterUncleaned" class="msg hidden" style="margin-top:0.5rem;"></div>
       <div id="msgPrepare" class="msg hidden" style="margin-top:0.5rem;"></div>
     </div>
   </div>
 
-  <!-- Krok 2: Cleaning Rules -->
-  <div class="step card hidden" id="step2">
-    <h2><span class="step-badge">2</span>Pravidla čištění</h2>
-    <label for="allowedTags">Allowed Tags (oddělené čárkou)</label>
-    <input type="text" id="allowedTags" value="p,br,b,strong,i,em,u,h3,h4,h5,ul,ol,li,span">
-    <label for="orphanPhrases">Orphan Phrases – „sirotci“ (oddělené čárkou)</label>
-    <input type="text" id="orphanPhrases" value="tabulka velikostí,orientační tabulka,velikostní tabulka,slouží pouze pro orientaci">
-    <p class="sub" style="margin-top:-0.5rem;">Odstraní se bloky s těmito frázemi vedle obrázku/tabulky i <strong>blok hned pod</strong> obrázkem/tabulkou (popisek). Porovnání je <strong>bez ohledu na velikost písmen</strong> („Tabulka velikostí“ = „tabulka velikostí“).</p>
-    <div class="toggle-wrap">
-      <input type="checkbox" id="tableToList" checked>
-      <label for="tableToList" style="margin:0">Převést tabulky na seznamy (table/tr/td → ul/li)</label>
+  <!-- Settings modal (Kanál + pravidla čištění) -->
+  <div id="settingsModal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content card">
+      <h2>Nastavení</h2>
+      <label for="fieldId">Kanál (účet) pro synchronizaci popisů</label>
+      <select id="fieldId">
+        <option value="description|cs|kauflandcz_0">Kaufland</option>
+        <option value="description|cs|sportisimo_0">Sportisimo</option>
+        <option value="description|cs|decathlon_0">Decathlon</option>
+        <option value="description|cs|alza_0">Alza</option>
+      </select>
+      <hr style="margin:1rem 0;">
+      <h3>Pravidla čištění</h3>
+      <label for="allowedTags">Allowed Tags (oddělené čárkou)</label>
+      <input type="text" id="allowedTags" value="p,br,b,strong,i,em,u,h3,h4,h5,ul,ol,li,span">
+      <label for="orphanPhrases">Orphan Phrases – „sirotci“ (oddělené čárkou)</label>
+      <input type="text" id="orphanPhrases" value="tabulka velikostí,orientační tabulka,velikostní tabulka,slouží pouze pro orientaci">
+      <p class="sub" style="margin-top:-0.5rem;">Odstraní se bloky s těmito frázemi vedle obrázku/tabulky i <strong>blok hned pod</strong> obrázkem/tabulkou (popisek). Porovnání je <strong>bez ohledu na velikost písmen</strong>.</p>
+      <div class="toggle-wrap">
+        <input type="checkbox" id="tableToList" checked>
+        <label for="tableToList" style="margin:0">Převést tabulky na seznamy (table/tr/td → ul/li)</label>
+      </div>
+      <div style="margin-top:1rem; display:flex; gap:0.5rem; justify-content:flex-end;">
+        <button type="button" class="btn secondary" id="btnCloseSettings">Zavřít</button>
+      </div>
     </div>
   </div>
 
-  <!-- Krok 3: Připravené produkty a synchronizace -->
+  <!-- Náhled vyčištěných produktů (krok synchronizace) -->
   <div class="step card hidden" id="step3">
-    <h2><span class="step-badge">3</span>Synchronizace</h2>
+    <h2>Vyčištěné popisy (náhled a synchronizace)</h2>
     <div id="productsTableWrap" class="hidden">
       <h3>Tabulka produktů</h3>
       <table>
         <thead>
           <tr>
             <th><label class="select-all-wrap"><input type="checkbox" id="checkAll" title="Vybrat vše"> Vybrat vše</label></th>
-            <th>ID</th>
-            <th>Název</th>
+            <th>ID<br><input type="text" id="filterCleanId" placeholder="Filtrovat ID"></th>
+            <th>Název<br><input type="text" id="filterCleanName" placeholder="Filtrovat název"></th>
             <th>Původní HTML (náhled)</th>
             <th>Nové HTML (náhled)</th>
           </tr>
         </thead>
         <tbody id="productsTableBody"></tbody>
       </table>
-      <p class="sub" style="margin-top:0.5rem;">Synchronizace aktualizuje pouze popis pro vybraný kanál, ne hlavní popis v katalogu.</p>
-      <div style="margin-top:0.75rem;">
-        <button type="button" class="btn" id="btnSyncSelected">Synchronizovat vybrané</button>
+      <div class="pagination-wrap">
+        <button type="button" class="btn secondary" id="btnCleanPrev" disabled>&lt;</button>
+        <span id="cleanPageInfo" class="page-info">Stránka 1 z 1</span>
+        <button type="button" class="btn secondary" id="btnCleanNext" disabled>&gt;</button>
       </div>
-      <div class="card" style="margin-top:1rem;">
-        <label for="singleProductId">Synchronizovat pouze jedno Product ID (pro testování)</label>
-        <input type="text" id="singleProductId" placeholder="např. 12345">
-        <button type="button" class="btn" id="btnSyncSingle">Synchronizovat pouze toto ID</button>
+      <div style="margin-top:0.75rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <button type="button" class="btn" id="btnSyncSelected">Synchronizovat vybrané</button>
+        <button type="button" class="btn secondary" id="btnSyncAll">Vyčistit / Synchronizovat vše</button>
       </div>
       <div id="msgSync" class="msg hidden"></div>
     </div>

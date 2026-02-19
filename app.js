@@ -9,21 +9,26 @@
   }
 
   let products = [];
-  let lastLoadedProductData = null; // { productId, product } po Načíst informace o produktu
   const BL_STORAGE = 'bl_token';
   const INV_STORAGE = 'bl_inventory_id';
   const FIELD_STORAGE = 'bl_field_id';
 
-  const DEFAULT_INVENTORY_ID = 5257;
+  const DEFAULT_INVENTORY_ID = 5257; // INVENTORY_ID nyní bereme jako konstantu
   const CATALOG_PAGE_SIZE = 20;   // produktů na jedné stránce tabulky
   const CATALOG_API_PAGE_SIZE = 1000; // BaseLinker vrací max 1000 na stránku
   const CATALOG_MAX_PAGES = 10;   // max počet API stránek (10 × 1000 = 10 000 produktů)
+  const SYNC_BATCH_SIZE = 50;           // počet produktů v jedné dávce setInventoryProductData
+  const SYNC_RATE_DELAY_MS = 700;       // pauza mezi requesty kvůli rate limitu
+  const SYNC_RETRY_AFTER_429_MS = 30000; // pauza po 429 (Too Many Requests)
   let catalogList = [];           // [{ itemId, name, ean, sku }]
   let catalogCurrentPage = 1;
   let catalogSelectedIds = new Set(); // vybraná ID napříč stránkami
 
   function getToken() { return sessionStorage.getItem(BL_STORAGE) || document.getElementById('blToken').value.trim(); }
-  function getInventoryId() { return sessionStorage.getItem(INV_STORAGE) || document.getElementById('inventoryId').value.trim(); }
+  // INVENTORY_ID už není editovatelné v UI – používáme konstantu
+  function getInventoryId() {
+    return String(DEFAULT_INVENTORY_ID);
+  }
   // Aktuální vybraný kanál v UI – při sync se použije tato hodnota (dropdown má přednost před session)
   function getFieldId() {
     const el = document.getElementById('fieldId');
@@ -63,13 +68,64 @@
     return msg;
   }
 
-  // —— Ověřit spojení ——
+  function sleep(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
+  // —— Login screen: pouze API klíč, INVENTORY_ID je konstanta ——
+  document.getElementById('btnLogin').addEventListener('click', async function () {
+    const apiKeyInput = document.getElementById('loginApiKey');
+    const apiKey = apiKeyInput.value.trim();
+    if (!apiKey) {
+      showMsg('loginMsg', 'Zadejte BaseLinker API klíč.', 'error');
+      return;
+    }
+    // uložit token do sessionStorage a do skrytého pole, které používá stávající logika
+    sessionStorage.setItem(BL_STORAGE, apiKey);
+    const blTokenInput = document.getElementById('blToken');
+    if (blTokenInput) blTokenInput.value = apiKey;
+    const inventoryInput = document.getElementById('inventoryId');
+    if (inventoryInput) inventoryInput.value = String(DEFAULT_INVENTORY_ID);
+
+    this.disabled = true;
+    showMsg('loginMsg', 'Ověřuji API klíč…', 'info');
+    try {
+      const data = await callBaseLinker('getInventoryAvailableTextFieldKeys', { inventory_id: DEFAULT_INVENTORY_ID });
+      if (data.status === 'SUCCESS') {
+        // uložit výchozí FIELD_ID z aktuálně vybraného kanálu (dropdown)
+        const fieldEl = document.getElementById('fieldId');
+        if (fieldEl && fieldEl.value) {
+          sessionStorage.setItem(FIELD_STORAGE, fieldEl.value);
+        }
+        sessionStorage.setItem(INV_STORAGE, String(DEFAULT_INVENTORY_ID));
+        // přechod na dashboard
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('dashboard').classList.remove('hidden');
+        const apiRow = document.getElementById('apiSetupRow');
+        if (apiRow) apiRow.classList.add('hidden');
+        // zpřístupnit krok 3 (tabulka produktů); pravidla se otevírají přes Settings
+        document.getElementById('step3').classList.remove('hidden');
+        showMsg('loginMsg', '', '');
+        showMsg('msg1', 'Spojení v pořádku.', 'success');
+        // Auto-load: použijeme existující logiku načtení seznamu produktů
+        const btnLoad = document.getElementById('btnLoadCatalogList');
+        if (btnLoad) btnLoad.click();
+      } else {
+        showMsg('loginMsg', (data.error_message || data.error || 'Chyba API') + (data.error_code ? ' (kód: ' + data.error_code + ')' : ''), 'error');
+      }
+    } catch (e) {
+      showMsg('loginMsg', 'Chyba: ' + wrapFetchError(e), 'error');
+    } finally {
+      this.disabled = false;
+    }
+  });
+
+  // —— Ověřit spojení (ponecháno pro případné ruční testy, ale UI je schované za loginem) ——
   document.getElementById('btnVerifyConnection').addEventListener('click', async function () {
     const token = document.getElementById('blToken').value.trim();
-    const inventoryId = document.getElementById('inventoryId').value.trim();
-    const fieldId = document.getElementById('fieldId').value;
-    if (!token || !inventoryId) {
-      showMsg('msg1', 'Vyplňte token a INVENTORY_ID.', 'error');
+    const inventoryId = getInventoryId();
+    if (!token) {
+      showMsg('msg1', 'Vyplňte BaseLinker token.', 'error');
       return;
     }
     this.disabled = true;
@@ -79,64 +135,12 @@
       if (data.status === 'SUCCESS') {
         sessionStorage.setItem(BL_STORAGE, token);
         sessionStorage.setItem(INV_STORAGE, inventoryId);
-        sessionStorage.setItem(FIELD_STORAGE, fieldId);
         showMsg('msg1', 'Spojení v pořádku.', 'success');
-        document.getElementById('step2').classList.remove('hidden');
-        document.getElementById('step3').classList.remove('hidden');
       } else {
         showMsg('msg1', (data.error_message || data.error || 'Chyba API') + (data.error_code ? ' (kód: ' + data.error_code + ')' : ''), 'error');
       }
     } catch (e) {
       showMsg('msg1', 'Chyba: ' + wrapFetchError(e), 'error');
-    } finally {
-      this.disabled = false;
-    }
-  });
-
-  // —— Načíst produkt podle ID (getInventoryProductsData) ——
-  document.getElementById('btnGetProductInfo').addEventListener('click', async function () {
-    const token = getToken();
-    const inventoryId = getInventoryId() || String(DEFAULT_INVENTORY_ID);
-    const productIdStr = document.getElementById('testProductId').value.trim();
-    if (!token) {
-      showMsg('msg1', 'Vyplňte BaseLinker token.', 'error');
-      return;
-    }
-    if (!productIdStr) {
-      showMsg('msg1', 'Zadejte Product ID.', 'error');
-      return;
-    }
-    const productId = parseInt(productIdStr, 10);
-    if (isNaN(productId)) {
-      showMsg('msg1', 'Product ID musí být číslo.', 'error');
-      return;
-    }
-    this.disabled = true;
-    document.getElementById('productInfoWrap').classList.add('hidden');
-    document.getElementById('productInfoOutput').textContent = 'Načítám…';
-    document.getElementById('productInfoWrap').classList.remove('hidden');
-    try {
-      const data = await callBaseLinker('getInventoryProductsData', {
-        inventory_id: parseInt(inventoryId, 10),
-        products: [productId],
-      });
-      const out = document.getElementById('productInfoOutput');
-      out.textContent = JSON.stringify(data, null, 2);
-      document.getElementById('productInfoWrap').classList.remove('hidden');
-      if (data.status === 'SUCCESS' && data.products && data.products[String(productId)]) {
-        lastLoadedProductData = { productId: productId, product: data.products[String(productId)] };
-        document.getElementById('btnEditProduct').classList.remove('hidden');
-      } else {
-        lastLoadedProductData = null;
-        document.getElementById('btnEditProduct').classList.add('hidden');
-      }
-      if (data.status !== 'SUCCESS') {
-        showMsg('msg1', (data.error_message || data.error || 'Chyba API') + (data.error_code ? ' (kód: ' + data.error_code + ')' : ''), 'error');
-      }
-    } catch (e) {
-      const errText = wrapFetchError(e);
-      document.getElementById('productInfoOutput').textContent = 'Chyba: ' + errText;
-      showMsg('msg1', 'Chyba: ' + errText, 'error');
     } finally {
       this.disabled = false;
     }
@@ -219,7 +223,8 @@
     catalogSelectedIds.clear();
     catalogCurrentPage = 1;
     try {
-      for (let apiPage = 1; apiPage <= CATALOG_MAX_PAGES; apiPage++) {
+      let apiPage = 1;
+      while (true) {
         const data = await callBaseLinker('getInventoryProductsList', {
           inventory_id: parseInt(inventoryId, 10),
           page: apiPage,
@@ -236,7 +241,9 @@
             });
           }
         });
+        // Pokud API vrátilo méně než CATALOG_API_PAGE_SIZE produktů, už nejsou další stránky
         if (Object.keys(data.products).length < CATALOG_API_PAGE_SIZE) break;
+        apiPage++;
       }
       showMsg('msgCatalog', 'Načteno ' + catalogList.length + ' produktů.', 'success');
       document.getElementById('catalogListWrap').classList.remove('hidden');
@@ -332,6 +339,147 @@
     }
   });
 
+  // Pomocná funkce: načte data produktů po dávkách (max 1000 ID na jeden request)
+  async function fetchProductsDataBatched(inventoryId, ids) {
+    const numIds = ids
+      .map(function (id) { return parseInt(id, 10); })
+      .filter(function (n) { return !isNaN(n); });
+    const allProducts = {};
+    const batchSize = 1000;
+    for (let start = 0; start < numIds.length; start += batchSize) {
+      const batch = numIds.slice(start, start + batchSize);
+      const data = await callBaseLinker('getInventoryProductsData', {
+        inventory_id: parseInt(inventoryId, 10),
+        products: batch,
+      });
+      if (data.status !== 'SUCCESS' || !data.products) {
+        throw new Error((data.error_message || data.error || 'Chyba API') + (data.error_code ? ' (kód: ' + data.error_code + ')' : ''));
+      }
+      Object.keys(data.products).forEach(function (id) {
+        allProducts[id] = data.products[id];
+      });
+    }
+    return allProducts;
+  }
+
+  // Filtrovat pouze nevyčištěné produkty (odstraní ty, které už mají popis v aktuálně vybraném kanálu)
+  async function filterUncleanedProducts() {
+    if (!catalogList.length) {
+      showMsg('msgFilterUncleaned', 'Seznam produktů je prázdný. Nejprve načtěte katalog.', 'error');
+      return;
+    }
+
+    const fieldId = getFieldId();
+    if (!fieldId) {
+      showMsg('msgFilterUncleaned', 'Vyberte kanál (fieldId) v nastavení před filtrováním.', 'error');
+      return;
+    }
+
+    const inventoryId = getInventoryId() || String(DEFAULT_INVENTORY_ID);
+    const button = document.getElementById('btnFilterUncleaned');
+    if (button) button.disabled = true;
+
+    const originalCount = catalogList.length;
+    showMsg('msgFilterUncleaned', 'Kontroluji popisy ' + originalCount + ' produktů v kanálu ' + fieldId + '…', 'info');
+
+    try {
+      const ids = catalogList.map(function (item) { return item.itemId; });
+      const allProducts = await fetchProductsDataBatched(inventoryId, ids);
+
+      const uncleanedList = [];
+      let cleanedCount = 0;
+
+      catalogList.forEach(function (item) {
+        const prod = allProducts[item.itemId];
+        if (!prod) {
+          // Pokud produkt není v BaseLinkeru, ponecháme ho (možná je nový)
+          uncleanedList.push(item);
+          return;
+        }
+
+        const tf = prod.text_fields || {};
+        // Zkontrolovat přímo pole pro aktuálně vybraný kanál
+        const channelDescription = tf[fieldId];
+
+        // Pokud má produkt nějaký obsah v tomto kanálu (i když je to jen mezery), vyřadíme ho
+        const hasContent = channelDescription && typeof channelDescription === 'string' && channelDescription.trim().length > 0;
+
+        if (hasContent) {
+          cleanedCount++;
+          // Produkt má popis v tomto kanálu, odstraníme ho ze seznamu
+        } else {
+          // Produkt nemá popis v tomto kanálu, ponecháme ho
+          uncleanedList.push(item);
+        }
+      });
+
+      catalogList = uncleanedList;
+      catalogSelectedIds.clear(); // Vymazat výběr, protože se změnil seznam
+      catalogCurrentPage = 1; // Resetovat na první stránku
+
+      renderCatalogTable();
+
+      const remainingCount = catalogList.length;
+      showMsg(
+        'msgFilterUncleaned',
+        'Filtrování dokončeno. Odstraněno ' + cleanedCount + ' produktů s popisem v kanálu ' + fieldId + '. Zbývá ' + remainingCount + ' produktů bez popisu.',
+        'success'
+      );
+    } catch (e) {
+      showMsg('msgFilterUncleaned', 'Chyba při filtrování: ' + wrapFetchError(e), 'error');
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  // Vyčistit celý seznam – použije stejnou logiku jako „Připravit vybrané“, jen vezme všechna ID
+  const btnPrepareAll = document.getElementById('btnPrepareAll');
+  if (btnPrepareAll) {
+    btnPrepareAll.addEventListener('click', async function () {
+      if (!catalogList.length) {
+        showMsg('msgPrepare', 'Seznam produktů je prázdný. Nejprve načtěte katalog.', 'error');
+        return;
+      }
+      const ids = catalogList.map(function (item) { return item.itemId; });
+      const inventoryId = getInventoryId() || String(DEFAULT_INVENTORY_ID);
+      this.disabled = true;
+      showMsg('msgPrepare', 'Načítám popisy ' + ids.length + ' produktů a čistím…', 'info');
+      const allowedTagsSet = parseAllowedTags(document.getElementById('allowedTags').value);
+      const orphanPhrases = parseOrphanPhrases(document.getElementById('orphanPhrases').value);
+      const tableToList = document.getElementById('tableToList').checked;
+      const newProducts = [];
+      try {
+        const allProducts = await fetchProductsDataBatched(inventoryId, ids);
+        ids.forEach(function (id) {
+          const prod = allProducts[id];
+          if (!prod) return;
+          const tf = prod.text_fields || {};
+          const originalHtml = getDescriptionFromTextFields(tf);
+          const name = (tf['name'] || tf['name|cs'] || '').trim() || ('Produkt ' + id);
+          const cleanedHtml = cleanDescription(originalHtml, allowedTagsSet, orphanPhrases, tableToList);
+          newProducts.push({ itemId: String(id), name: name, originalHtml: originalHtml, cleanedHtml: cleanedHtml });
+        });
+        products = newProducts;
+        showMsg('msgPrepare', 'Připraveno ' + products.length + ' produktů. Níže vidíte vyčištěné popisy.', 'success');
+        document.getElementById('step3').classList.remove('hidden');
+        document.getElementById('productsTableWrap').classList.remove('hidden');
+        renderTable(products);
+      } catch (e) {
+        showMsg('msgPrepare', 'Chyba: ' + wrapFetchError(e), 'error');
+      } finally {
+        this.disabled = false;
+      }
+    });
+  }
+
+  // Event listener pro tlačítko "Filtrovat pouze nevyčištěné"
+  const btnFilterUncleaned = document.getElementById('btnFilterUncleaned');
+  if (btnFilterUncleaned) {
+    btnFilterUncleaned.addEventListener('click', function () {
+      filterUncleanedProducts();
+    });
+  }
+
   // —— Upravit produkt (text_fields) podle pravidel čištění ——
   function getDescriptionFromTextFields(textFields) {
     if (!textFields || typeof textFields !== 'object') return '';
@@ -343,6 +491,11 @@
     return '';
   }
 
+  function hasHtmlContent(html) {
+    if (!html || typeof html !== 'string') return false;
+    return /<[^>]+>/.test(html);
+  }
+
   function getNameFromTextFields(textFields) {
     if (!textFields || typeof textFields !== 'object') return '';
     const n = textFields['name'] || textFields['name|cs'];
@@ -350,71 +503,29 @@
     return '';
   }
 
-  document.getElementById('btnEditProduct').addEventListener('click', function () {
-    if (!lastLoadedProductData) return;
-    const { productId, product } = lastLoadedProductData;
-    const tf = product.text_fields || {};
-    const originalHtml = getDescriptionFromTextFields(tf);
-    const name = getNameFromTextFields(tf) || ('Produkt ' + productId);
-    const allowedTagsSet = parseAllowedTags(document.getElementById('allowedTags').value);
-    const orphanPhrases = parseOrphanPhrases(document.getElementById('orphanPhrases').value);
-    const tableToList = document.getElementById('tableToList').checked;
-    const cleanedHtml = cleanDescription(originalHtml, allowedTagsSet, orphanPhrases, tableToList);
-    products = [{ itemId: String(productId), name: name, originalHtml: originalHtml, cleanedHtml: cleanedHtml }];
-    const tbody = document.getElementById('productEditTableBody');
-    tbody.innerHTML =
-      '<tr>' +
-      '<td>' + escapeHtml(String(productId)) + '</td>' +
-      '<td>' + escapeHtml(name) + '</td>' +
-      '<td><div class="preview-html">' + escapeHtml(originalHtml.slice(0, 300)) + (originalHtml.length > 300 ? '…' : '') + '</div></td>' +
-      '<td><div class="preview-html">' + escapeHtml(cleanedHtml.slice(0, 300)) + (cleanedHtml.length > 300 ? '…' : '') + '</div></td>' +
-      '<td><button type="button" class="btn" id="btnSyncEditedOne">Sync</button></td>' +
-      '</tr>';
-    document.getElementById('productEditTableWrap').classList.remove('hidden');
-    document.getElementById('msgEditSync').classList.add('hidden');
-    document.getElementById('btnSyncEditedOne').addEventListener('click', async function () {
-      document.getElementById('msgEditSync').classList.remove('hidden');
-      await syncOne(0, 'msgEditSync');
-    });
-  });
+  // Funkce pro úpravu jednoho produktu podle ID byla odstraněna z UI (zjednodušení rozhraní)
 
-  document.getElementById('btnSyncEditedProduct').addEventListener('click', async function () {
-    if (products.length === 0) return;
-    document.getElementById('msgEditSync').classList.remove('hidden');
-    await syncOne(0, 'msgEditSync');
-  });
-
-  function copyToClipboard(text, msgElId) {
-    const msgId = msgElId || 'msgEditSync';
-    if (!text) { showMsg(msgId, 'Nic ke zkopírování.', 'error'); return; }
-    navigator.clipboard.writeText(text).then(() => {
-      showMsg(msgId, 'Zkopírováno do schránky.', 'success');
-    }).catch(() => {
-      showMsg(msgId, 'Kopírování se nepovedlo.', 'error');
-    });
-  }
-
-  document.getElementById('btnCopyOriginalHtml').addEventListener('click', function () {
-    if (products.length === 0) return;
-    document.getElementById('msgEditSync').classList.remove('hidden');
-    copyToClipboard(products[0].originalHtml, 'msgEditSync');
-  });
-  document.getElementById('btnCopyNewHtml').addEventListener('click', function () {
-    if (products.length === 0) return;
-    document.getElementById('msgEditSync').classList.remove('hidden');
-    copyToClipboard(products[0].cleanedHtml, 'msgEditSync');
-  });
-
-  // Při načtení stránky obnovit krok 2 a 3 pokud už bylo ověření
+  // Při načtení stránky: pokud už máme API klíč, přeskočíme login a ukážeme dashboard
   if (sessionStorage.getItem(BL_STORAGE)) {
-    document.getElementById('inventoryId').value = sessionStorage.getItem(INV_STORAGE) || '';
+    const blTokenInput = document.getElementById('blToken');
+    if (blTokenInput) blTokenInput.value = sessionStorage.getItem(BL_STORAGE);
+    const inventoryInput = document.getElementById('inventoryId');
+    if (inventoryInput) inventoryInput.value = String(DEFAULT_INVENTORY_ID);
     const savedField = sessionStorage.getItem(FIELD_STORAGE);
     const fieldEl = document.getElementById('fieldId');
     if (savedField && fieldEl) {
       const opt = Array.from(fieldEl.options).find(o => o.value === savedField);
       if (opt) fieldEl.value = savedField;
     }
-    document.getElementById('step2').classList.remove('hidden');
+    const loginScreen = document.getElementById('loginScreen');
+    const dashboard = document.getElementById('dashboard');
+    if (loginScreen && dashboard) {
+      loginScreen.classList.add('hidden');
+      dashboard.classList.remove('hidden');
+    }
+    const apiRow = document.getElementById('apiSetupRow');
+    if (apiRow) apiRow.classList.add('hidden');
+    // krok 2 (pravidla) zůstává skrytý, otevírá se tlačítkem Settings
     document.getElementById('step3').classList.remove('hidden');
   }
 
@@ -552,14 +663,56 @@
     return result;
   }
 
+  const CLEAN_PAGE_SIZE = 20;
+  let cleanCurrentPage = 1;
+
+  function getFilteredCleanList() {
+    const idFilterEl = document.getElementById('filterCleanId');
+    const nameFilterEl = document.getElementById('filterCleanName');
+    const idFilter = idFilterEl ? (idFilterEl.value || '').trim().toLowerCase() : '';
+    const nameFilter = nameFilterEl ? (nameFilterEl.value || '').trim().toLowerCase() : '';
+    return (products || []).filter(function (p) {
+      if (idFilter && String(p.itemId || '').toLowerCase().indexOf(idFilter) === -1) return false;
+      if (nameFilter && String(p.name || '').toLowerCase().indexOf(nameFilter) === -1) return false;
+      return true;
+    });
+  }
+
+  function getFilteredCleanPage() {
+    const filtered = getFilteredCleanList();
+    const totalPages = Math.max(1, Math.ceil(filtered.length / CLEAN_PAGE_SIZE));
+    const page = Math.min(Math.max(1, cleanCurrentPage), totalPages);
+    const start = (page - 1) * CLEAN_PAGE_SIZE;
+    return {
+      page,
+      totalPages,
+      rows: filtered.slice(start, start + CLEAN_PAGE_SIZE),
+      total: filtered.length,
+    };
+  }
+
+  function updateCleanPagination(page, totalPages, total) {
+    const infoEl = document.getElementById('cleanPageInfo');
+    const prevBtn = document.getElementById('btnCleanPrev');
+    const nextBtn = document.getElementById('btnCleanNext');
+    if (infoEl) infoEl.textContent = 'Stránka ' + page + ' z ' + totalPages + ' (celkem ' + total + ' produktů)';
+    if (prevBtn) prevBtn.disabled = page <= 1;
+    if (nextBtn) nextBtn.disabled = page >= totalPages;
+  }
+
   function renderTable(productsList) {
     products = productsList;
     const tbody = document.getElementById('productsTableBody');
     tbody.innerHTML = '';
-    productsList.forEach((p, i) => {
+
+    const { page, totalPages, rows, total } = getFilteredCleanPage();
+    cleanCurrentPage = page;
+
+    rows.forEach((p, i) => {
+      const globalIndex = products.indexOf(p);
       const tr = document.createElement('tr');
       tr.innerHTML =
-        '<td><input type="checkbox" class="row-check" data-index="' + i + '"></td>' +
+        '<td><input type="checkbox" class="row-check" data-index="' + globalIndex + '"></td>' +
         '<td>' + escapeHtml(p.itemId) + '</td>' +
         '<td>' + escapeHtml(p.name) + '</td>' +
         '<td><div class="preview-html">' + escapeHtml(p.originalHtml.slice(0, 300)) + (p.originalHtml.length > 300 ? '…' : '') + '</div></td>' +
@@ -567,6 +720,7 @@
       tbody.appendChild(tr);
     });
     document.getElementById('productsTableWrap').classList.remove('hidden');
+    updateCleanPagination(page, totalPages, total);
     document.getElementById('checkAll').checked = false;
     tbody.querySelectorAll('.row-check').forEach(cb => {
       cb.addEventListener('change', updateCheckAllState);
@@ -591,6 +745,42 @@
     this.indeterminate = false;
   });
 
+  const filterCleanIdInput = document.getElementById('filterCleanId');
+  if (filterCleanIdInput) {
+    filterCleanIdInput.addEventListener('input', function () {
+      cleanCurrentPage = 1;
+      renderTable(products);
+    });
+  }
+  const filterCleanNameInput = document.getElementById('filterCleanName');
+  if (filterCleanNameInput) {
+    filterCleanNameInput.addEventListener('input', function () {
+      cleanCurrentPage = 1;
+      renderTable(products);
+    });
+  }
+
+  const btnCleanPrev = document.getElementById('btnCleanPrev');
+  if (btnCleanPrev) {
+    btnCleanPrev.addEventListener('click', function () {
+      const { totalPages } = getFilteredCleanPage();
+      if (cleanCurrentPage > 1) {
+        cleanCurrentPage--;
+        renderTable(products);
+      }
+    });
+  }
+  const btnCleanNext = document.getElementById('btnCleanNext');
+  if (btnCleanNext) {
+    btnCleanNext.addEventListener('click', function () {
+      const { totalPages } = getFilteredCleanPage();
+      if (cleanCurrentPage < totalPages) {
+        cleanCurrentPage++;
+        renderTable(products);
+      }
+    });
+  }
+
   function escapeHtml(s) {
     const div = document.createElement('div');
     div.textContent = s;
@@ -602,6 +792,181 @@
     const fieldId = getFieldId();
     if (fieldId) textFields[fieldId] = cleanedHtml;
     return textFields;
+  }
+
+  // —— UI: reClean – přepočítá cleanedHtml pro vybrané / všechny produkty (používá existující cleanDescription) ——
+  function reClean(indices) {
+    if (!products.length) return;
+    const allowedTagsSet = parseAllowedTags(document.getElementById('allowedTags').value);
+    const orphanPhrases = parseOrphanPhrases(document.getElementById('orphanPhrases').value);
+    const tableToList = document.getElementById('tableToList').checked;
+    const target = Array.isArray(indices) && indices.length ? indices : products.map((_, i) => i);
+    target.forEach(i => {
+      const p = products[i];
+      if (!p) return;
+      p.cleanedHtml = cleanDescription(p.originalHtml, allowedTagsSet, orphanPhrases, tableToList);
+    });
+    renderTable(products);
+  }
+
+  // —— Settings: zobrazit / skrýt kartu s pravidly čištění jako „nastavení“ ——
+  const btnOpenSettings = document.getElementById('btnOpenSettings');
+  if (btnOpenSettings) {
+    btnOpenSettings.addEventListener('click', function () {
+      const modal = document.getElementById('settingsModal');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+    });
+  }
+
+  const btnCloseSettings = document.getElementById('btnCloseSettings');
+  if (btnCloseSettings) {
+    btnCloseSettings.addEventListener('click', function () {
+      const modal = document.getElementById('settingsModal');
+      if (!modal) return;
+      modal.classList.add('hidden');
+    });
+  }
+
+  async function syncProductsBatchedByIndices(indices, msgElId) {
+    const msgId = msgElId || 'msgSync';
+    if (!Array.isArray(indices) || !indices.length) {
+      showMsg(msgId, 'Žádné produkty k synchronizaci.', 'error');
+      return;
+    }
+
+    const fieldId = getFieldId();
+    if (!fieldId) {
+      showMsg(msgId, 'Vyberte kanál (fieldId) v nastavení.', 'error');
+      return;
+    }
+
+    const selectedProducts = indices
+      .map(function (i) { return products[i]; })
+      .filter(function (p) { return !!p; });
+
+    let skippedHtml = 0;
+    const toSend = [];
+
+    selectedProducts.forEach(function (p) {
+      const alreadyHasHtml = hasHtmlContent(p.originalHtml);
+      const changedSinceLast = !p.lastSyncedHtml || p.cleanedHtml !== p.lastSyncedHtml;
+
+      // Smart skip: produkt už má HTML a zároveň nedošlo k žádné nové změně
+      if (alreadyHasHtml && !changedSinceLast) {
+        skippedHtml++;
+        return;
+      }
+
+      // Pokud se nic nezměnilo oproti poslední synchronizaci, nemá smysl znovu odesílat
+      if (!changedSinceLast) {
+        return;
+      }
+
+      toSend.push(p);
+    });
+
+    console.log('[Sync] Přeskočeno ' + skippedHtml + ' produktů (již mají HTML).');
+    console.log('[Sync] Připraveno k odeslání ' + toSend.length + ' produktů.');
+
+    if (!toSend.length) {
+      showMsg(msgId, 'Žádné produkty k odeslání po filtrování (vše již má HTML nebo beze změny).', 'info');
+      return;
+    }
+
+    const inventoryId = parseInt(getInventoryId(), 10) || DEFAULT_INVENTORY_ID;
+    const totalToSend = toSend.length;
+    const totalBatches = Math.ceil(totalToSend / SYNC_BATCH_SIZE);
+    let sentOk = 0;
+    let sentErr = 0;
+
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+      const batchProducts = toSend.slice(batchIndex * SYNC_BATCH_SIZE, (batchIndex + 1) * SYNC_BATCH_SIZE);
+      const currentBatch = batchIndex + 1;
+
+      console.log('[Sync] Začínám dávku ' + currentBatch + '/' + totalBatches + ' (' + batchProducts.length + ' produktů)…');
+      showMsg(msgId, 'Odesílám dávku ' + currentBatch + '/' + totalBatches + ' (' + batchProducts.length + ' produktů)…', 'info');
+
+      for (let i = 0; i < batchProducts.length; i++) {
+        const p = batchProducts[i];
+        if (!p) continue;
+
+        const globalIndex = batchIndex * SYNC_BATCH_SIZE + i + 1;
+        const remaining = totalToSend - globalIndex;
+
+        console.log('[Sync] Čistím a odesílám produkt ' + p.itemId + ' (' + globalIndex + '/' + totalToSend + '), zbývá ' + remaining + '.');
+
+        const params = {
+          inventory_id: inventoryId,
+          product_id: p.itemId,
+          text_fields: buildChannelTextFields(p.cleanedHtml),
+        };
+
+        let retried429 = false;
+        while (true) {
+          try {
+            const data = await callBaseLinker('addInventoryProduct', params);
+            if (data && data.status === 'SUCCESS') {
+              sentOk++;
+              p.wasSynced = true;
+              p.lastSyncedHtml = p.cleanedHtml;
+            } else {
+              sentErr++;
+              console.error('[Sync] Chyba při odesílání produktu ' + p.itemId + ':', data);
+              showMsg(
+                msgId,
+                'Chyba při odesílání produktu ' + p.itemId + ': ' + ((data && (data.error_message || data.error)) || 'Chyba API'),
+                'error'
+              );
+            }
+            break;
+          } catch (e) {
+            const msg = e && e.message ? e.message : String(e);
+            if ((/429/.test(msg) || /Too Many Requests/i.test(msg)) && !retried429) {
+              retried429 = true;
+              console.warn('[Sync] 429 Too Many Requests pro produkt ' + p.itemId + '. Čekám ' + (SYNC_RETRY_AFTER_429_MS / 1000) + ' s a zkouším znovu…');
+              showMsg(
+                msgId,
+                'BaseLinker vrátil 429 Too Many Requests pro produkt ' + p.itemId + '. Čekám 30 s a zkouším znovu…',
+                'error'
+              );
+              await sleep(SYNC_RETRY_AFTER_429_MS);
+              continue;
+            } else if (/429/.test(msg) || /Too Many Requests/i.test(msg)) {
+              console.error('[Sync] 429 Too Many Requests pro produkt ' + p.itemId + ' i po opakování:', e);
+              showMsg(
+                msgId,
+                'Druhá chyba 429 Too Many Requests pro produkt ' + p.itemId + ': ' + wrapFetchError(e),
+                'error'
+              );
+              throw e;
+            } else {
+              sentErr++;
+              console.error('[Sync] Chyba při odesílání produktu ' + p.itemId + ':', e);
+              showMsg(
+                msgId,
+                'Chyba při odesílání produktu ' + p.itemId + ': ' + wrapFetchError(e),
+                'error'
+              );
+              break;
+            }
+          }
+        }
+
+        // Pauza mezi jednotlivými requesty kvůli rate limitu (100 requestů / min)
+        if (globalIndex < totalToSend) {
+          await sleep(SYNC_RATE_DELAY_MS);
+        }
+      }
+
+      console.log('[Sync] Dávka ' + currentBatch + '/' + totalBatches + ' dokončena.');
+    }
+
+    showMsg(
+      msgId,
+      'Synchronizace dokončena. Odesláno ' + sentOk + ' produktů, ' + sentErr + ' chyb, přeskočeno ' + skippedHtml + '.',
+      sentErr ? 'error' : 'success'
+    );
   }
 
   async function syncOne(index, msgElId) {
@@ -640,60 +1005,58 @@
     }
   }
 
-  document.getElementById('btnSyncSelected').addEventListener('click', async function () {
-    if (!getToken()) {
-      showMsg('msgSync', 'Vyplňte BaseLinker token v kroku 1.', 'error');
-      return;
-    }
-    const indices = getSelectedIndices();
-    if (indices.length === 0) {
-      showMsg('msgSync', 'Zaškrtněte alespoň jeden produkt.', 'error');
-      return;
-    }
-        if (indices.length > 5 && !confirm('Opravdu chcete aktualizovat ' + indices.length + ' produktů ve vybraném kanálu?')) {
-      return;
-    }
-    this.disabled = true;
-    console.log('[Sync] Sync vybrané – počet produktů:', indices.length, 'IDs:', indices.map(i => products[i].itemId));
-        showMsg('msgSync', 'Synchronizuji ' + indices.length + ' vybraných produktů…', 'info');
-    let ok = 0, err = 0;
-    for (const i of indices) {
-      const p = products[i];
-        const textFields = buildChannelTextFields(p.cleanedHtml);
-          const params = { inventory_id: parseInt(getInventoryId(), 10) || DEFAULT_INVENTORY_ID, product_id: p.itemId, text_fields: textFields };
-      console.log('[Sync] Produkt ' + p.itemId + ' – odesílám addInventoryProduct', params);
-      try {
-        const data = await callBaseLinker('addInventoryProduct', params);
-        console.log('[Sync] Produkt ' + p.itemId + ' – odpověď:', data);
-        if (data.status === 'SUCCESS') ok++; else err++;
-      } catch (e) {
-        console.error('[Sync] Produkt ' + p.itemId + ' – chyba:', e);
-        err++;
+  // —— Synchronizace: vybrané / všechny produkty ——
+  const btnSyncSelected = document.getElementById('btnSyncSelected');
+  if (btnSyncSelected) {
+    btnSyncSelected.addEventListener('click', async function () {
+      if (!getToken()) {
+        showMsg('msgSync', 'Vyplňte BaseLinker token v kroku 1.', 'error');
+        return;
       }
-    }
-    console.log('[Sync] Hotovo: ' + ok + ' OK, ' + err + ' chyb.');
-    showMsg('msgSync', 'Hotovo: ' + ok + ' OK, ' + err + ' chyb.', err ? 'error' : 'success');
-    this.disabled = false;
-  });
+      const rawIndices = getSelectedIndices();
+      if (!rawIndices.length) {
+        showMsg('msgSync', 'Zaškrtněte alespoň jeden produkt.', 'error');
+        return;
+      }
+      // přepočítat cleanedHtml podle aktuálních pravidel jen pro vybrané produkty
+      reClean(rawIndices);
+      this.disabled = true;
+      try {
+        await syncProductsBatchedByIndices(rawIndices, 'msgSync');
+      } catch (e) {
+        // chyba je již zalogovaná uvnitř syncProductsBatchedByIndices
+      } finally {
+        this.disabled = false;
+      }
+    });
+  }
 
-  document.getElementById('btnSyncSingle').addEventListener('click', async function () {
-    const idStr = document.getElementById('singleProductId').value.trim();
-    if (!idStr) {
-      showMsg('msgSync', 'Zadejte Product ID.', 'error');
-      return;
-    }
-    if (!getToken()) {
-      showMsg('msgSync', 'Vyplňte BaseLinker token v kroku 1.', 'error');
-      return;
-    }
-    const index = products.findIndex(p => String(p.itemId) === idStr);
-    if (index === -1) {
-      showMsg('msgSync', 'Produkt s ID „' + idStr + '“ není v načteném feedu. Načtěte XML a zkuste znovu.', 'error');
-      return;
-    }
-    this.disabled = true;
-    showMsg('msgSync', 'Synchronizuji produkt ' + idStr + '…', 'info');
-    await syncOne(index);
-    this.disabled = false;
-  });
+  const btnSyncAll = document.getElementById('btnSyncAll');
+  if (btnSyncAll) {
+    btnSyncAll.addEventListener('click', async function () {
+      if (!getToken()) {
+        showMsg('msgSync', 'Vyplňte BaseLinker token v kroku 1.', 'error');
+        return;
+      }
+      if (!products.length) {
+        showMsg('msgSync', 'Žádné produkty k synchronizaci.', 'error');
+        return;
+      }
+
+      const allIndices = products.map(function (_, i) { return i; });
+      // přepočítat cleanedHtml pro všechny produkty
+      reClean(allIndices);
+
+      const button = this;
+      button.disabled = true;
+
+      try {
+        await syncProductsBatchedByIndices(allIndices, 'msgSync');
+      } catch (e) {
+        // chyba je již zalogovaná uvnitř syncProductsBatchedByIndices
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
 })();
