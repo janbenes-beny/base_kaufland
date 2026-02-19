@@ -24,11 +24,11 @@
       <h1>Čištění produktových popisů (BaseLinker)</h1>
       <button type="button" class="btn secondary" id="btnOpenSettings">Nastavení</button>
     </div>
-    <p class="sub">Vyberte produkty z katalogu a synchronizujte vyčištěné popisy do vybraného kanálu.</p>
+    <p class="sub">Vyberte produkty z katalogu a synchronizujte vyčištěné popisy do vybraného kanálu. Kánal a pravidla čištění naleznete v nastavení.</p>
 
-  <!-- Krok 1: základní nastavení + seznam produktů -->
+  <!-- Krok 1: seznam produktů -->
   <div class="step card" id="step1">
-    <h2>Základní nastavení</h2>
+    <h2 class="visually-hidden">Seznam produktů</h2>
     <div id="apiSetupRow">
       <label for="blToken">BaseLinker API token (X-BLToken)</label>
       <input type="password" id="blToken" placeholder="Váš token z BaseLinker → Účet → API" autocomplete="off">
@@ -38,9 +38,11 @@
       <div id="msg1" class="msg hidden"></div>
     </div>
 
-    <h3 style="margin-top:1.5rem;">Načíst seznam produktů z katalogu</h3>
-    <p class="sub">Načte seznam produktů (ID, název) z BaseLinker. Vyfiltrujte, vyberte jeden nebo více a připravte k čištění popisů.</p>
-    <button type="button" class="btn" id="btnLoadCatalogList">Načíst seznam produktů</button>
+    <p class="sub" style="margin-top:1.5rem;">
+      Načítám seznam produktů z katalogu, vydržte prosím. Po načtení můžete seznam vyfiltrovat,
+      vybrat jeden nebo více produktů a připravit je k čištění popisů.
+    </p>
+    <button type="button" class="btn visually-hidden" id="btnLoadCatalogList" aria-hidden="true">Načíst seznam produktů</button>
     <div id="msgCatalog" class="msg hidden"></div>
     <div id="catalogListWrap" class="hidden" style="margin-top:1rem;">
       <h4>Seznam produktů z katalogu</h4>

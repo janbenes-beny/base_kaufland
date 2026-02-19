@@ -505,7 +505,8 @@
 
   // Funkce pro úpravu jednoho produktu podle ID byla odstraněna z UI (zjednodušení rozhraní)
 
-  // Při načtení stránky: pokud už máme API klíč, přeskočíme login a ukážeme dashboard
+  // Při načtení stránky: pokud už máme API klíč, přeskočíme login, ukážeme dashboard
+  // a znovu automaticky načteme seznam produktů z katalogu.
   if (sessionStorage.getItem(BL_STORAGE)) {
     const blTokenInput = document.getElementById('blToken');
     if (blTokenInput) blTokenInput.value = sessionStorage.getItem(BL_STORAGE);
@@ -527,6 +528,9 @@
     if (apiRow) apiRow.classList.add('hidden');
     // krok 2 (pravidla) zůstává skrytý, otevírá se tlačítkem Settings
     document.getElementById('step3').classList.remove('hidden');
+    // Auto-load katalogu i po refreshi, pokud je uživatel přihlášen
+    const btnLoad = document.getElementById('btnLoadCatalogList');
+    if (btnLoad) btnLoad.click();
   }
 
   // —— Cleaning logic ——
