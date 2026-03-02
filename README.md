@@ -1,64 +1,74 @@
-# Čištění produktových popisů (Heureka XML → BaseLinker)
+# Čištění produktových popisů (BaseLinker → Kaufland)
 
-Webová aplikace pro vyčištění popisů z Heureka XML a synchronizaci do BaseLinker API.  
-Dokumentace BaseLinker: [https://api.baselinker.com/](https://api.baselinker.com/).
+Webová aplikace pro vyčištění produktových popisů a synchronizaci do BaseLinker API. Načítá produkty přímo z BaseLinker katalogu, čistí HTML popisy podle nastavených pravidel a odesílá je do vybraného kanálu (Kaufland, Sportisimo, Decathlon, Alza).
 
-Obsahuje také **přihlášení** a **import z API** (feed URL) pro variantu Heureka → Kaufland.
+Dokumentace BaseLinker API: [https://api.baselinker.com/](https://api.baselinker.com/)
+
+---
+
+## Rychlý start
+
+1. **Spusťte lokálně** (nebo nasaďte na Netlify):
+   ```bash
+   npm install -g netlify-cli
+   netlify dev
+   ```
+2. Otevřete v prohlížeči adresu (např. `http://localhost:8888`)
+3. Zadejte **BaseLinker API klíč** (X-BLToken) z BaseLinker → Účet → API
+4. Po přihlášení se načte seznam produktů – vyberte produkty a synchronizujte
 
 ---
 
 ## Kroky v aplikaci
 
-### 1. API Setup
-- **BaseLinker API token** – z BaseLinker: Účet a další → Můj účet → API (X-BLToken).
-- **INVENTORY_ID** – ID katalogu (např. z metody `getInventories`).
-- **FIELD_ID** – klíč pole popisu pro daný kanál (např. `description`, nebo `description|cs|kaufland_0` pro konkrétní integraci).
-- Tlačítko **„Testovat spojení“** zavolá `getInventoryAvailableTextFieldKeys`. Při úspěchu se token uloží do `sessionStorage` a zpřístupní se další kroky.
+### 1. Přihlášení
+- Zadejte **BaseLinker API Key** (X-BLToken)
+- API klíč se uloží do `sessionStorage` – při příští návštěvě se automaticky přihlásíte
+- **Odhlásit** – tlačítko vpravo nahoře vymaže uložený klíč a vrátí vás na přihlašovací obrazovku (užitečné pro přepnutí na jiný účet/klíč)
 
-### 2. Pravidla čištění (editovatelné)
-- **Allowed Tags** – povolené HTML tagy (p, br, b, strong, i, em, u, h3, h4, h5, ul, ol, li, span).
-- **Orphan Phrases (sirotci)** – pokud odstavec obsahuje tyto fráze a v blízkosti je smazán `<img>` nebo `<table>`, odstraní se celý odstavec (předvyplněno: tabulka velikostí, orientační tabulka, velikostní tabulka).
-- **Table Logic** – přepínač „Převést tabulky na seznamy“ (table/tr/td → ul/li).
+### 2. Seznam produktů
+- Po přihlášení se automaticky načte katalog z BaseLinker
+- Tabulka: **ID**, **EAN**, **Název** – u každého sloupce lze filtrovat
+- Vyberte produkty zaškrtnutím a klikněte **„Připravit vybrané k čištění“** nebo **„Vyčistit celý seznam“**
+- **„Zobrazit pouze nevyčištěné produkty“** – zúží seznam na produkty bez popisu v aktuálně vybraném kanálu
 
-### 3. Zpracování
-- Nahrání **XML souboru** (Heureka formát) nebo zadání **URL feedu**.
-- Transformace podle pravidel: odstranění nepovolených tagů, odstranění atributů (class, style, href, src), převod tabulek na seznamy (pokud zapnuto), odstranění „sirotků“.
-- Tabulka produktů: **ID**, **Název**, **Původní HTML (náhled)**, **Nové HTML (náhled)**, tlačítko **Sync** u každého řádku + **Sync vše do BaseLinker**.
+### 3. Nastavení (tlačítko Nastavení)
+- **Kanál** – vyberte cílový kanál pro synchronizaci (Kaufland, Sportisimo, Decathlon, Alza)
+- **Allowed Tags** – povolené HTML tagy (p, br, b, strong, i, em, ul, ol, li, …)
+- **Orphan Phrases** – fráze, u kterých se odstraní celý blok vedle obrázku/tabulky (např. „tabulka velikostí“, „orientační tabulka“)
+- **Převést tabulky na seznamy** – převede `<table>` na `<ul>/<li>`
 
-### 4. BaseLinker Sync
-- Po kliknutí na **Sync** se pro daný produkt zavolá metoda **addInventoryProduct** s parametrem `text_fields`: `{ [FIELD_ID]: vyčištěný HTML }`. Produkt je identifikován pomocí **product_id** z Heureka `ITEM_ID`.
+### 4. Vyčištěné popisy a synchronizace
+- Tabulka zobrazuje **původní HTML** a **nové HTML** – obě s posuvníkem pro prohlédnutí celého obsahu
+- **Upravit** – tlačítko u každého řádku otevře modál, kde můžete:
+  - upravit původní i nové HTML
+  - přepínat mezi **náhledem (WYSIWYG)** a **zdrojovým HTML**
+  - uložit změny zpět do tabulky
+- **Synchronizovat vybrané** / **Synchronizovat vše** – odešle vyčištěné popisy do BaseLinker
+
+---
+
+## API limit (rate limit)
+
+BaseLinker API má limit **přibližně 100 požadavků za minutu**. Aplikace to respektuje:
+
+| Nastavení | Hodnota | Popis |
+|-----------|---------|-------|
+| Pauza mezi requesty | 700 ms | Po každém odeslaném produktu se čeká 0,7 s před dalším |
+| Chyba 429 (Too Many Requests) | 30 s pauza | Pokud BaseLinker vrátí 429, aplikace počká 30 sekund a zkusí znovu |
+
+**Doporučení:** Při synchronizaci velkého počtu produktů (stovky) může proces trvat několik minut. Nezavírejte stránku a vyčkejte na dokončení.
 
 ---
 
 ## Nasazení na Netlify
 
-1. [Netlify](https://app.netlify.com/) → **Add new site** → **Import an existing project** (Git).
-2. **Build settings:** Build command prázdný, **Publish directory:** `.`
-3. **Functions directory:** `netlify/functions` (často detekováno z `netlify.toml`).
+1. [Netlify](https://app.netlify.com/) → **Add new site** → **Import an existing project** (Git)
+2. Propojte repozitář `janbenes-beny/base_kaufland`
+3. **Build settings:** Build command prázdný, **Publish directory:** `.`
+4. **Functions directory:** `netlify/functions` (detekováno z `netlify.toml`)
 
-**Environment variables** (Site settings → Environment variables):
-
-| Proměnná           | Povinné | Popis |
-|--------------------|--------|--------|
-| `LOGIN_USER`      | ano*   | Uživatelské jméno pro přihlášení |
-| `LOGIN_PASSWORD`  | ano*   | Heslo pro přihlášení |
-| `AUTH_SECRET`     | doporučeno | Tajný klíč pro podpis tokenů (jinak se použije `LOGIN_PASSWORD`) |
-| `HEUREKA_FEED_URL` nebo `FEED_URL` | ne | URL XML feedu (Heureka / Base API) |
-| `HEUREKA_API_KEY` nebo `FEED_API_KEY` | ne | API klíč pro přístup k feedu |
-
-\* Pro BaseLinker wizard bez přihlášení lze nechat prázdné; token a ID zadává uživatel v aplikaci. Pro přihlášení a Import z API jsou `LOGIN_USER` a `LOGIN_PASSWORD` povinné.
-
-Funkce **`netlify/functions/baselinker.js`** slouží jako proxy k BaseLinker API (CORS). Funkce **auth.js** a **import-feed.js** obsluhují přihlášení a stahování feedu z API.
-
----
-
-## Přihlášení a Import z API
-
-- **Přihlášení:** Na úvodní stránce zadejte uživatel a heslo nastavené v `LOGIN_USER` a `LOGIN_PASSWORD`. Po úspěchu se zobrazí hlavní aplikace.
-- **Import z API:** V záložce „Import z API“ můžete stáhnout feed z nakonfigurované URL (`HEUREKA_FEED_URL`, `FEED_API_KEY`) nebo zadat **vlastní feed URL** a volitelně **API klíč** (backend obchází CORS a drží klíč na serveru).
-- **Odhlášení:** Tlačítko „Odhlásit se“ vpravo nahoře.
-
-**Poznámka:** Přihlášení a Import z API fungují až po nasazení na Netlify (nebo při lokálním běhu `netlify dev`).
+Pro základní provoz **nepotřebujete** žádné environment variables – API klíč zadává uživatel v aplikaci.
 
 ---
 
@@ -69,15 +79,7 @@ npm install -g netlify-cli
 netlify dev
 ```
 
-Otevře se lokální server; volání na `/.netlify/functions/baselinker`, `/.netlify/functions/auth` a `/.netlify/functions/import-feed` poběží lokálně. Env proměnné nastavte v souboru `.env` (necommitujte), viz `.env.example`:
-
-```env
-LOGIN_USER=admin
-LOGIN_PASSWORD=vaso-heslo
-AUTH_SECRET=nahodny-tajny-klic
-HEUREKA_FEED_URL=https://vase-feed-url.cz/feed.xml
-HEUREKA_API_KEY=volitelne
-```
+Otevře se lokální server. Volání na `/.netlify/functions/baselinker` poběží lokálně. **Poznámka:** Stránka musí běžet přes HTTP (ne `file://`), jinak API nefunguje kvůli CORS.
 
 ---
 
@@ -85,22 +87,18 @@ HEUREKA_API_KEY=volitelne
 
 | Soubor | Účel |
 |--------|------|
-| `index.html` | Wizard: API Setup, Cleaning Rules, Processing, tabulka produktů, Sync |
-| `netlify/functions/baselinker.js` | Proxy POST na BaseLinker `connector.php` (token, method, parameters) |
-| `netlify/functions/auth.js` | Přihlášení, vydání JWT tokenu |
-| `netlify/functions/import-feed.js` | Stahování Heureka feedu (s Bearer tokenem) |
-
-Python/Streamlit verze (`app.py`) zůstává v repozitáři pro lokální vyčištění XML bez přihlášení a API.
+| `index.html` | Rozhraní: přihlášení, seznam produktů, tabulka vyčištěných popisů, modál pro úpravu |
+| `app.js` | Logika: načítání katalogu, čištění HTML, synchronizace do BaseLinker |
+| `styles.css` | Styly |
+| `netlify/functions/baselinker.js` | Proxy k BaseLinker API (obchází CORS) |
 
 ---
 
 ## Python verze (Streamlit)
 
-Bez přihlášení a API, pouze lokální nahrání souboru:
+Pro lokální vyčištění XML bez API:
 
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
-
----
