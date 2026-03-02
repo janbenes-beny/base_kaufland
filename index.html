@@ -22,7 +22,10 @@
   <div id="dashboard" class="hidden">
     <div class="toolbar">
       <h1>Čištění produktových popisů (BaseLinker)</h1>
-      <button type="button" class="btn secondary" id="btnOpenSettings">Nastavení</button>
+      <div style="display:flex; gap:0.5rem;">
+        <button type="button" class="btn secondary" id="btnOpenSettings">Nastavení</button>
+        <button type="button" class="btn secondary" id="btnLogout">Odhlásit</button>
+      </div>
     </div>
     <p class="sub">Vyberte produkty z katalogu a synchronizujte vyčištěné popisy do vybraného kanálu. Kánal a pravidla čištění naleznete v nastavení.</p>
 
@@ -51,6 +54,7 @@
           <tr>
             <th class="col-check"><label class="select-all-wrap"><input type="checkbox" id="checkAllCatalog" title="Vybrat vše na stránce"> Vybrat</label></th>
             <th class="col-id">ID<br><input type="text" id="filterCatalogId" placeholder="Filtrovat ID"></th>
+            <th class="col-ean">EAN<br><input type="text" id="filterCatalogEan" placeholder="Filtrovat EAN"></th>
             <th class="col-name">Název<br><input type="text" id="filterCatalogName" placeholder="Filtrovat název"></th>
           </tr>
         </thead>
@@ -118,6 +122,7 @@
             <th>Název<br><input type="text" id="filterCleanName" placeholder="Filtrovat název"></th>
             <th>Původní HTML (náhled)</th>
             <th>Nové HTML (náhled)</th>
+            <th class="col-edit">Editace</th>
           </tr>
         </thead>
         <tbody id="productsTableBody"></tbody>
@@ -132,6 +137,35 @@
         <button type="button" class="btn secondary" id="btnSyncAll">Vyčistit / Synchronizovat vše</button>
       </div>
       <div id="msgSync" class="msg hidden"></div>
+    </div>
+  </div>
+
+  <!-- Modál pro úpravu HTML produktu -->
+  <div id="editProductModal" class="modal hidden">
+    <div class="modal-backdrop" id="editProductModalBackdrop"></div>
+    <div class="modal-content card edit-product-modal-content">
+      <h2>Úprava popisu produktu <span id="editProductId"></span></h2>
+      <p class="sub" id="editProductName"></p>
+      <div class="edit-section">
+        <div class="edit-section-header">
+          <label>Původní HTML</label>
+          <button type="button" class="btn secondary btn-sm" id="btnToggleOriginalMode">Přepnout na HTML</button>
+        </div>
+        <div id="editOriginalWysiwyg" class="edit-wysiwyg" contenteditable="true"></div>
+        <textarea id="editOriginalHtml" class="edit-html hidden" spellcheck="false"></textarea>
+      </div>
+      <div class="edit-section">
+        <div class="edit-section-header">
+          <label>Nové HTML (vyčištěné)</label>
+          <button type="button" class="btn secondary btn-sm" id="btnToggleCleanedMode">Přepnout na HTML</button>
+        </div>
+        <div id="editCleanedWysiwyg" class="edit-wysiwyg" contenteditable="true"></div>
+        <textarea id="editCleanedHtml" class="edit-html hidden" spellcheck="false"></textarea>
+      </div>
+      <div style="margin-top:1rem; display:flex; gap:0.5rem; justify-content:flex-end;">
+        <button type="button" class="btn secondary" id="btnCloseEditModal">Zavřít</button>
+        <button type="button" class="btn" id="btnSaveEditModal">Uložit změny</button>
+      </div>
     </div>
   </div>
 

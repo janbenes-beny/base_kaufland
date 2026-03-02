@@ -57,6 +57,55 @@ h2 { font-size: 1.1rem; margin: 1.25rem 0 0.5rem; }
   z-index: 1001;
 }
 
+.edit-product-modal-content {
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.edit-section {
+  margin: 1rem 0;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.5rem;
+  background: #fafafa;
+}
+
+.edit-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.edit-section-header label { margin-bottom: 0; }
+
+.edit-wysiwyg, .edit-html {
+  min-height: 120px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  font-size: 0.9rem;
+}
+
+.edit-wysiwyg {
+  font-family: inherit;
+}
+
+.edit-html {
+  font-family: monospace;
+  font-size: 0.85rem;
+  resize: vertical;
+}
+
+.col-edit { width: 5rem; }
+
+.btn-sm { padding: 0.35rem 0.6rem; font-size: 0.85rem; }
+
 .card {
   background: #fff;
   padding: 1.25rem;
@@ -161,8 +210,9 @@ th, td {
 th { background: #eee; }
 
 .preview-html {
-  max-height: 120px;
-  overflow: auto;
+  max-height: 180px;
+  overflow-y: auto;
+  overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 0.8rem;
@@ -194,6 +244,7 @@ th { background: #eee; }
 }
 .catalog-table .col-check { width: 6rem; }
 .catalog-table .col-id { width: 6rem; }
+.catalog-table .col-ean { width: 8rem; }
 .pagination-wrap {
   display: flex;
   align-items: center;

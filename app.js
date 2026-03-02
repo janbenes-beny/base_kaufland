@@ -120,6 +120,21 @@
     }
   });
 
+  // —— Odhlásit: vymazat sessionStorage a vrátit na login obrazovku pro zadání jiného API klíče ——
+  document.getElementById('btnLogout').addEventListener('click', function () {
+    sessionStorage.removeItem(BL_STORAGE);
+    sessionStorage.removeItem(INV_STORAGE);
+    sessionStorage.removeItem(FIELD_STORAGE);
+    const loginApiKeyInput = document.getElementById('loginApiKey');
+    if (loginApiKeyInput) loginApiKeyInput.value = '';
+    const blTokenInput = document.getElementById('blToken');
+    if (blTokenInput) blTokenInput.value = '';
+    document.getElementById('dashboard').classList.add('hidden');
+    document.getElementById('loginScreen').classList.remove('hidden');
+    showMsg('loginMsg', '', '');
+    showMsg('msg1', '', '');
+  });
+
   // —— Ověřit spojení (ponecháno pro případné ruční testy, ale UI je schované za loginem) ——
   document.getElementById('btnVerifyConnection').addEventListener('click', async function () {
     const token = document.getElementById('blToken').value.trim();
@@ -149,9 +164,11 @@
   // —— Seznam produktů z katalogu (getInventoryProductsList) ——
   function getFilteredCatalog() {
     const filterId = (document.getElementById('filterCatalogId') && document.getElementById('filterCatalogId').value.trim()) || '';
+    const filterEan = (document.getElementById('filterCatalogEan') && document.getElementById('filterCatalogEan').value.trim()) || '';
     const filterName = (document.getElementById('filterCatalogName') && document.getElementById('filterCatalogName').value.trim().toLowerCase()) || '';
     return catalogList.filter(function (item) {
       if (filterId && String(item.itemId).indexOf(filterId) === -1) return false;
+      if (filterEan && String(item.ean || '').indexOf(filterEan) === -1) return false;
       if (filterName && !((item.name || '').toLowerCase().includes(filterName))) return false;
       return true;
     });
@@ -177,6 +194,7 @@
       tr.innerHTML =
         '<td><input type="checkbox" class="catalog-row-check" data-product-id="' + escapeHtml(item.itemId) + '"' + checked + '></td>' +
         '<td>' + escapeHtml(item.itemId) + '</td>' +
+        '<td>' + escapeHtml(item.ean || '') + '</td>' +
         '<td>' + escapeHtml(item.name || '') + '</td>';
       tbody.appendChild(tr);
     });
@@ -248,6 +266,8 @@
       showMsg('msgCatalog', 'Načteno ' + catalogList.length + ' produktů.', 'success');
       document.getElementById('catalogListWrap').classList.remove('hidden');
       document.getElementById('filterCatalogId').value = '';
+      const filterEanEl = document.getElementById('filterCatalogEan');
+      if (filterEanEl) filterEanEl.value = '';
       document.getElementById('filterCatalogName').value = '';
       renderCatalogTable();
     } catch (e) {
@@ -258,6 +278,11 @@
   });
 
   document.getElementById('filterCatalogId').addEventListener('input', function () {
+    catalogCurrentPage = 1;
+    renderCatalogTable();
+  });
+  const filterCatalogEanEl = document.getElementById('filterCatalogEan');
+  if (filterCatalogEanEl) filterCatalogEanEl.addEventListener('input', function () {
     catalogCurrentPage = 1;
     renderCatalogTable();
   });
@@ -719,8 +744,9 @@
         '<td><input type="checkbox" class="row-check" data-index="' + globalIndex + '"></td>' +
         '<td>' + escapeHtml(p.itemId) + '</td>' +
         '<td>' + escapeHtml(p.name) + '</td>' +
-        '<td><div class="preview-html">' + escapeHtml(p.originalHtml.slice(0, 300)) + (p.originalHtml.length > 300 ? '…' : '') + '</div></td>' +
-        '<td><div class="preview-html">' + escapeHtml(p.cleanedHtml.slice(0, 300)) + (p.cleanedHtml.length > 300 ? '…' : '') + '</div></td>';
+        '<td><div class="preview-html">' + escapeHtml(p.originalHtml || '') + '</div></td>' +
+        '<td><div class="preview-html">' + escapeHtml(p.cleanedHtml || '') + '</div></td>' +
+        '<td><button type="button" class="btn secondary btn-sm btn-edit-product" data-index="' + globalIndex + '">Upravit</button></td>';
       tbody.appendChild(tr);
     });
     document.getElementById('productsTableWrap').classList.remove('hidden');
@@ -729,7 +755,98 @@
     tbody.querySelectorAll('.row-check').forEach(cb => {
       cb.addEventListener('change', updateCheckAllState);
     });
+    tbody.querySelectorAll('.btn-edit-product').forEach(btn => {
+      btn.addEventListener('click', function () {
+        const idx = parseInt(this.getAttribute('data-index'), 10);
+        if (!isNaN(idx)) openEditModal(idx);
+      });
+    });
   }
+
+  // —— Modál pro úpravu HTML produktu ——
+  let editModalProductIndex = -1;
+
+  function openEditModal(productIndex) {
+    const p = products[productIndex];
+    if (!p) return;
+    editModalProductIndex = productIndex;
+    document.getElementById('editProductId').textContent = p.itemId;
+    document.getElementById('editProductName').textContent = p.name || '';
+    document.getElementById('editOriginalWysiwyg').innerHTML = p.originalHtml || '';
+    document.getElementById('editOriginalHtml').value = p.originalHtml || '';
+    document.getElementById('editCleanedWysiwyg').innerHTML = p.cleanedHtml || '';
+    document.getElementById('editCleanedHtml').value = p.cleanedHtml || '';
+    setEditSectionMode('original', true);
+    setEditSectionMode('cleaned', true);
+    document.getElementById('editProductModal').classList.remove('hidden');
+  }
+
+  function closeEditModal() {
+    document.getElementById('editProductModal').classList.add('hidden');
+    editModalProductIndex = -1;
+  }
+
+  function setEditSectionMode(section, isWysiwyg) {
+    const wysiwygEl = document.getElementById('edit' + (section === 'original' ? 'Original' : 'Cleaned') + 'Wysiwyg');
+    const htmlEl = document.getElementById('edit' + (section === 'original' ? 'Original' : 'Cleaned') + 'Html');
+    const btnEl = document.getElementById('btnToggle' + (section === 'original' ? 'Original' : 'Cleaned') + 'Mode');
+    if (isWysiwyg) {
+      wysiwygEl.classList.remove('hidden');
+      htmlEl.classList.add('hidden');
+      if (btnEl) btnEl.textContent = 'Přepnout na HTML';
+    } else {
+      htmlEl.value = wysiwygEl.innerHTML;
+      wysiwygEl.classList.add('hidden');
+      htmlEl.classList.remove('hidden');
+      if (btnEl) btnEl.textContent = 'Přepnout na náhled';
+    }
+  }
+
+  function toggleEditSectionMode(section) {
+    const wysiwygEl = document.getElementById('edit' + (section === 'original' ? 'Original' : 'Cleaned') + 'Wysiwyg');
+    const htmlEl = document.getElementById('edit' + (section === 'original' ? 'Original' : 'Cleaned') + 'Html');
+    const isCurrentlyWysiwyg = !wysiwygEl.classList.contains('hidden');
+    if (isCurrentlyWysiwyg) {
+      htmlEl.value = wysiwygEl.innerHTML;
+      wysiwygEl.classList.add('hidden');
+      htmlEl.classList.remove('hidden');
+      document.getElementById('btnToggle' + (section === 'original' ? 'Original' : 'Cleaned') + 'Mode').textContent = 'Přepnout na náhled';
+    } else {
+      wysiwygEl.innerHTML = htmlEl.value;
+      wysiwygEl.classList.remove('hidden');
+      htmlEl.classList.add('hidden');
+      document.getElementById('btnToggle' + (section === 'original' ? 'Original' : 'Cleaned') + 'Mode').textContent = 'Přepnout na HTML';
+    }
+  }
+
+  function saveEditModal() {
+    if (editModalProductIndex < 0) return;
+    const p = products[editModalProductIndex];
+    if (!p) return;
+    const origWysiwyg = document.getElementById('editOriginalWysiwyg');
+    const origHtml = document.getElementById('editOriginalHtml');
+    const cleanWysiwyg = document.getElementById('editCleanedWysiwyg');
+    const cleanHtml = document.getElementById('editCleanedHtml');
+    p.originalHtml = origWysiwyg.classList.contains('hidden') ? origHtml.value : origWysiwyg.innerHTML;
+    p.cleanedHtml = cleanWysiwyg.classList.contains('hidden') ? cleanHtml.value : cleanWysiwyg.innerHTML;
+    renderTable(products);
+    closeEditModal();
+  }
+
+  document.getElementById('btnToggleOriginalMode').addEventListener('click', function () {
+    toggleEditSectionMode('original');
+  });
+  document.getElementById('btnToggleCleanedMode').addEventListener('click', function () {
+    toggleEditSectionMode('cleaned');
+  });
+  document.getElementById('btnCloseEditModal').addEventListener('click', closeEditModal);
+  document.getElementById('btnSaveEditModal').addEventListener('click', saveEditModal);
+  document.getElementById('editProductModalBackdrop').addEventListener('click', closeEditModal);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !document.getElementById('editProductModal').classList.contains('hidden')) {
+      closeEditModal();
+    }
+  });
 
   function getSelectedIndices() {
     return Array.from(document.querySelectorAll('.row-check:checked')).map(cb => parseInt(cb.getAttribute('data-index'), 10));
