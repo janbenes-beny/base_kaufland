@@ -120,7 +120,7 @@
     }
   });
 
-  // —— Odhlásit: vymazat sessionStorage a vrátit na login obrazovku pro zadání jiného API klíče ——
+  // —— Odhlásit: vymazat sessionStorage, resetovat veškerý stav a vrátit na login obrazovku ——
   document.getElementById('btnLogout').addEventListener('click', function () {
     sessionStorage.removeItem(BL_STORAGE);
     sessionStorage.removeItem(INV_STORAGE);
@@ -129,10 +129,30 @@
     if (loginApiKeyInput) loginApiKeyInput.value = '';
     const blTokenInput = document.getElementById('blToken');
     if (blTokenInput) blTokenInput.value = '';
-    document.getElementById('dashboard').classList.add('hidden');
-    document.getElementById('loginScreen').classList.remove('hidden');
+    // Resetovat veškerý stav – začít od nuly po příštím přihlášení
+    products = [];
+    catalogList = [];
+    catalogSelectedIds.clear();
+    catalogCurrentPage = 1;
+    cleanCurrentPage = 1;
+    const catalogListWrap = document.getElementById('catalogListWrap');
+    if (catalogListWrap) catalogListWrap.classList.add('hidden');
+    const productsTableWrap = document.getElementById('productsTableWrap');
+    if (productsTableWrap) productsTableWrap.classList.add('hidden');
+    const catalogListBody = document.getElementById('catalogListBody');
+    if (catalogListBody) catalogListBody.innerHTML = '';
+    const productsTableBody = document.getElementById('productsTableBody');
+    if (productsTableBody) productsTableBody.innerHTML = '';
+    const editModal = document.getElementById('editProductModal');
+    if (editModal) editModal.classList.add('hidden');
     showMsg('loginMsg', '', '');
     showMsg('msg1', '', '');
+    showMsg('msgCatalog', '', '');
+    showMsg('msgPrepare', '', '');
+    showMsg('msgSync', '', '');
+    showMsg('msgFilterUncleaned', '', '');
+    document.getElementById('dashboard').classList.add('hidden');
+    document.getElementById('loginScreen').classList.remove('hidden');
   });
 
   // —— Ověřit spojení (ponecháno pro případné ruční testy, ale UI je schované za loginem) ——
